@@ -692,7 +692,7 @@ function renderSettings() {
     const ids = new Set(invs.map((i) => i.id));
     const moves = data.moves.filter((m) => ids.has(m.invId) && !state.moves.some((x) => x.id === m.id));
     if (!invs.length) { toast('Esas inversiones ya están en la app'); return; }
-    if (!confirm('Se añadirán ' + invs.length + ' inversiones (' + invs.map((i) => i.name).join(', ') + ') a las que ya tienes. ¿Seguir?')) return;
+    if (!confirm((invs.length === 1 ? 'Se añadirá 1 inversión (' : 'Se añadirán ' + invs.length + ' inversiones (') + invs.map((i) => i.name).join(', ') + ') a las que ya tienes. ¿Seguir?')) return;
     state.investments.push(...invs);
     state.moves.push(...moves);
     saveState();
