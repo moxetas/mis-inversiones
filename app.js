@@ -3,7 +3,7 @@
 // Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '5';
+const APP_VERSION = '6';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -22,7 +22,7 @@ const STALE_DAYS = 30;
 // ---------- Estado guardado en el teléfono ----------
 
 function freshState() {
-  return { currency: 'EUR', investments: [], moves: [] };
+  return { currency: 'EUR', rates: {}, investments: [], moves: [] };
 }
 
 function loadState() {
@@ -55,8 +55,8 @@ function nf(opts) {
   try { return new Intl.NumberFormat('es-ES', Object.assign({ useGrouping: 'always' }, opts)); }
   catch (e) { return new Intl.NumberFormat('es-ES', opts); }
 }
-function money(n) { return nf({ style: 'currency', currency: state.currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0); }
-function price(n) { const a = Math.abs(n || 0); return nf({ style: 'currency', currency: state.currency, minimumFractionDigits: 2, maximumFractionDigits: a >= 1000 ? 2 : a >= 1 ? 4 : 6 }).format(n || 0); }
+function money(n, cur) { return nf({ style: 'currency', currency: cur || state.currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0); }
+function price(n, cur) { const a = Math.abs(n || 0); return nf({ style: 'currency', currency: cur || state.currency, minimumFractionDigits: 2, maximumFractionDigits: a >= 1000 ? 2 : a >= 1 ? 4 : 6 }).format(n || 0); }
 function units(n) { return nf({ maximumFractionDigits: 8 }).format(n || 0); }
 function pct(n) { return nf({ style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n || 0); }
 function signed(n, fmt) {
@@ -146,11 +146,31 @@ function calc(inv) {
 }
 
 function portfolio() {
-  const rows = state.investments.map((inv) => ({ inv, c: calc(inv) }));
-  const tot = { value: 0, contributed: 0, withdrawn: 0, income: 0, gain: 0 };
-  for (const r of rows) for (const k in tot) tot[k] += r.c[k];
+  const keys = ['value', 'contributed', 'withdrawn', 'income', 'gain'];
+  const rows = state.investments.map((inv) => {
+    const c = calc(inv), cur = invCur(inv), r = rateOf(cur);
+    const b = r ? Object.fromEntries(keys.map((k) => [k, c[k] / r])) : null;  // en la moneda principal
+    return { inv, c, cur, b };
+  });
+  const tot = Object.fromEntries(keys.map((k) => [k, 0]));
+  for (const r of rows) if (r.b) for (const k of keys) tot[k] += r.b[k];
   tot.pct = tot.contributed > 0 ? tot.gain / tot.contributed : 0;
-  return { rows, tot };
+  const missing = [...new Set(rows.filter((r) => !r.b).map((r) => r.cur))];
+  return { rows, tot, missing };
+}
+
+// Cada inversión puede tener su propia moneda; los totales se suman en la moneda principal
+function invCur(inv) { return (inv && inv.currency) || state.currency; }
+// Cambio guardado: 1 unidad de la moneda principal = rate unidades de «cur»
+function rateOf(cur) {
+  if (cur === state.currency) return 1;
+  const r = state.rates && state.rates[cur];
+  return r && r.base === state.currency && r.rate > 0 ? r.rate : null;
+}
+function toBase(n, cur) { const r = rateOf(cur); return r ? n / r : null; }
+function curSymbol(cur) {
+  try { return nf({ style: 'currency', currency: cur }).formatToParts(0).find((x) => x.type === 'currency').value; }
+  catch (e) { return cur; }
 }
 
 function lastUpdate(inv) { return inv.mode === 'units' ? inv.priceDate : inv.valueDate; }
@@ -210,22 +230,23 @@ function renderHome() {
     $('#demo').addEventListener('click', loadDemo);
     return;
   }
-  const { rows, tot } = portfolio();
+  const { rows, tot, missing } = portfolio();
+  const bv = (r) => (r.b ? r.b.value : 0);
 
   // Reparto por tipo, en el orden fijo de TYPES para que cada tipo conserve su color
-  const byType = TYPES.map((t) => ({ t, v: rows.filter((r) => r.inv.type === t.id).reduce((s, r) => s + r.c.value, 0) }))
+  const byType = TYPES.map((t) => ({ t, v: rows.filter((r) => r.inv.type === t.id).reduce((s, r) => s + bv(r), 0) }))
     .filter((x) => x.v > 0.005);
   const byPlat = {};
   for (const r of rows) {
-    if (r.c.value <= 0.005) continue;
+    if (bv(r) <= 0.005) continue;
     const k = r.inv.platform || 'Sin plataforma';
-    byPlat[k] = (byPlat[k] || 0) + r.c.value;
+    byPlat[k] = (byPlat[k] || 0) + bv(r);
   }
   const plats = Object.entries(byPlat).sort((a, b) => b[1] - a[1]);
   const share = (v) => (tot.value > 0 ? v / tot.value : 0);
 
   const stale = rows.filter((r) => !r.c.closed && (!lastUpdate(r.inv) || daysSince(lastUpdate(r.inv)) > STALE_DAYS));
-  const top = rows.filter((r) => !r.c.closed).sort((a, b) => b.c.value - a.c.value).slice(0, 5);
+  const top = rows.filter((r) => !r.c.closed).sort((a, b) => bv(b) - bv(a)).slice(0, 5);
 
   view.innerHTML = `
     <section class="card hero">
@@ -239,6 +260,8 @@ function renderHome() {
         <div class="stat"><div class="k">Inversiones abiertas</div><div class="v">${rows.filter((r) => !r.c.closed).length}</div></div>
       </div>
     </section>
+
+    ${missing.length ? `<p class="note">⚠︎ Falta el cambio de ${missing.map(esc).join(', ')} a ${esc(state.currency)}: esas inversiones no se suman al total. Ponlo en <a href="#/ajustes">Ajustes</a>.</p>` : ''}
 
     ${stale.length ? `<p class="note">⚠︎ ${stale.length === 1 ? 'Hay 1 inversión' : 'Hay ' + stale.length + ' inversiones'} sin actualizar el precio desde hace más de ${STALE_DAYS} días: el valor puede no ser el real.</p>` : ''}
 
@@ -267,14 +290,15 @@ function renderHome() {
 }
 
 function invRow({ inv, c }) {
+  const cur = invCur(inv), m = (x) => money(x, cur);
   const sub = [typeOf(inv.type).name, inv.platform].filter(Boolean).join(' · ');
   return `
     <a class="row" href="#/inv/${inv.id}">
       <span class="dot" style="background:${typeColor(inv.type)}"></span>
       <span class="main"><div class="t">${esc(inv.name)}</div><div class="s">${esc(sub)}</div></span>
       <span class="end">
-        <div class="num">${money(c.value)}</div>
-        <div class="s num ${cls(c.gain)}">${c.contributed > 0 ? signed(c.gain) + ' · ' + signed(c.pct, pct) : ''}</div>
+        <div class="num">${m(c.value)}</div>
+        <div class="s num ${cls(c.gain)}">${c.contributed > 0 ? signed(c.gain, m) + ' · ' + signed(c.pct, pct) : ''}</div>
       </span>
     </a>`;
 }
@@ -288,7 +312,8 @@ function renderList() {
     view.innerHTML = `<div class="card empty"><p>Aún no hay inversiones.</p><a class="btn" href="#/inv/nueva">Añadir inversión</a></div>`;
     return;
   }
-  const open = rows.filter((r) => !r.c.closed).sort((a, b) => b.c.value - a.c.value);
+  const bv = (r) => (r.b ? r.b.value : 0);
+  const open = rows.filter((r) => !r.c.closed).sort((a, b) => bv(b) - bv(a));
   const closed = rows.filter((r) => r.c.closed).sort((a, b) => a.inv.name.localeCompare(b.inv.name, 'es'));
   view.innerHTML = `
     ${open.length ? `<div class="list">${open.map(invRow).join('')}</div>` : ''}
@@ -307,22 +332,26 @@ function renderDetail(id) {
   const u = lastUpdate(inv);
   const unitsMode = inv.mode === 'units';
   const sub = [typeOf(inv.type).name, inv.ticker, inv.platform].filter(Boolean).join(' · ');
+  const cur = invCur(inv), mo = (x) => money(x, cur), pr = (x) => price(x, cur);
+  const inBase = cur !== state.currency ? toBase(c.value, cur) : null;
+  const rate = state.rates && state.rates[cur];
 
   view.innerHTML = `
     <section class="card hero">
       <div class="label">${esc(sub)}</div>
-      <div class="big num">${money(c.value)}</div>
-      <div class="delta num ${cls(c.gain)}">${arrow(c.gain)}${signed(c.gain)} (${signed(c.pct, pct)}) en total</div>
+      <div class="big num">${mo(c.value)}</div>
+      ${cur !== state.currency ? `<div class="label num">${inBase != null ? '≈ ' + money(inBase) + ' (1 ' + esc(curSymbol(state.currency)) + ' = ' + nf({ maximumFractionDigits: 4 }).format(rate.rate) + ' ' + esc(curSymbol(cur)) + ')' : 'Falta el cambio de ' + esc(cur) + ' en Ajustes'}</div>` : ''}
+      <div class="delta num ${cls(c.gain)}">${arrow(c.gain)}${signed(c.gain, mo)} (${signed(c.pct, pct)}) en total</div>
       <div class="stats">
         ${unitsMode ? `
           <div class="stat"><div class="k">Participaciones</div><div class="v">${units(c.held)}</div></div>
-          <div class="stat"><div class="k">Precio actual</div><div class="v">${inv.price != null ? price(inv.price) : '—'}</div></div>
-          <div class="stat"><div class="k">Precio medio de compra</div><div class="v">${c.avg != null ? price(c.avg) : '—'}</div></div>
-          <div class="stat"><div class="k">Ganancia sin vender</div><div class="v ${cls(c.unrealized)}">${c.held > 0 ? signed(c.unrealized) : '—'}</div></div>
-          <div class="stat"><div class="k">Ganancia ya vendida</div><div class="v ${cls(c.realized)}">${signed(c.realized)}</div></div>` : ''}
-        <div class="stat"><div class="k">Dinero aportado</div><div class="v">${money(c.contributed)}</div></div>
-        <div class="stat"><div class="k">Dinero retirado</div><div class="v">${money(c.withdrawn)}</div></div>
-        <div class="stat"><div class="k">${inv.type === 'depositos' || inv.type === 'rentafija' ? 'Intereses' : 'Dividendos e intereses'}</div><div class="v">${money(c.income)}</div></div>
+          <div class="stat"><div class="k">Precio actual</div><div class="v">${inv.price != null ? pr(inv.price) : '—'}</div></div>
+          <div class="stat"><div class="k">Precio medio de compra</div><div class="v">${c.avg != null ? pr(c.avg) : '—'}</div></div>
+          <div class="stat"><div class="k">Ganancia sin vender</div><div class="v ${cls(c.unrealized)}">${c.held > 0 ? signed(c.unrealized, mo) : '—'}</div></div>
+          <div class="stat"><div class="k">Ganancia ya vendida</div><div class="v ${cls(c.realized)}">${signed(c.realized, mo)}</div></div>` : ''}
+        <div class="stat"><div class="k">Dinero aportado</div><div class="v">${mo(c.contributed)}</div></div>
+        <div class="stat"><div class="k">Dinero retirado</div><div class="v">${mo(c.withdrawn)}</div></div>
+        <div class="stat"><div class="k">${inv.type === 'depositos' || inv.type === 'rentafija' ? 'Intereses' : 'Dividendos e intereses'}</div><div class="v">${mo(c.income)}</div></div>
         <div class="stat"><div class="k">${unitsMode ? 'Precio actualizado' : 'Valor actualizado'}</div><div class="v">${u ? fmtDate(u) : 'Nunca'}</div></div>
       </div>
     </section>
@@ -345,13 +374,14 @@ function moveRow(m, showInv) {
   const sign = m.kind === 'buy' ? '−' : '+';
   const net = m.kind === 'buy' ? m.amount + (m.fee || 0) : m.amount - (m.fee || 0);
   let detail = fmtDate(m.date);
-  if (inv && inv.mode === 'units' && m.kind !== 'income' && m.units) detail += ' · ' + units(m.units) + ' × ' + price(m.price);
+  const cur = invCur(inv);
+  if (inv && inv.mode === 'units' && m.kind !== 'income' && m.units) detail += ' · ' + units(m.units) + ' × ' + price(m.price, cur);
   const letter = { buy: m.kind === 'buy' && inv && inv.mode === 'units' ? 'C' : 'A', sell: inv && inv.mode === 'units' ? 'V' : 'R', income: '+' }[m.kind];
   return `
     <a class="row" href="#/mov/${m.id}">
       <span class="badge ${m.kind}" aria-hidden="true">${letter}</span>
       <span class="main"><div class="t">${showInv && inv ? esc(inv.name) : esc(name)}</div><div class="s">${showInv ? esc(name) + ' · ' : ''}${esc(detail)}</div></span>
-      <span class="end"><div class="num ${m.kind === 'income' ? 'good' : ''}">${sign}${money(net)}</div>${m.note ? `<div class="s">${esc(m.note)}</div>` : ''}</span>
+      <span class="end"><div class="num ${m.kind === 'income' ? 'good' : ''}">${sign}${money(net, cur)}</div>${m.note ? `<div class="s">${esc(m.note)}</div>` : ''}</span>
     </a>`;
 }
 
@@ -372,6 +402,9 @@ function renderInvForm(id) {
         <input name="name" required maxlength="80" placeholder="Ej.: Apple, Fondo indexado MSCI World…" value="${esc(inv ? inv.name : '')}"></label>
       <label class="field"><span>Tipo</span>
         <select name="type">${TYPES.map((x) => `<option value="${x.id}" ${x.id === t ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>Moneda</span>
+        <select name="currency">${CURRENCIES.map((x) => `<option ${x === invCur(inv) ? 'selected' : ''}>${x}</option>`).join('')}</select>
+        <small>La moneda en la que compras y en la que ves su precio. El total de la cartera se suma en ${esc(state.currency)}.</small></label>
       <div class="field"><span>¿Cómo la apuntas?</span>
         <div class="seg">
           <label><input type="radio" name="mode" value="units" ${mode === 'units' ? 'checked' : ''} ${hasMoves ? 'disabled' : ''}><span>Participaciones</span></label>
@@ -406,6 +439,7 @@ function renderInvForm(id) {
     const data = {
       name,
       type: f.elements.type.value,
+      currency: f.elements.currency.value,
       platform: f.elements.platform.value.trim(),
       ticker: f.elements.ticker.value.trim().toUpperCase(),
       notes: f.elements.notes.value.trim(),
@@ -448,7 +482,7 @@ function renderValueForm(id) {
   view.innerHTML = `
     <form class="form card" id="f" novalidate>
       <p class="note" style="margin:0"><strong>${esc(inv.name)}</strong>${unitsMode ? ` · tienes ${units(c.held)} participaciones` : ''}</p>
-      <label class="field"><span>${unitsMode ? 'Precio actual de cada participación' : 'Cuánto vale hoy en total'}</span>
+      <label class="field"><span>${unitsMode ? 'Precio actual de cada participación' : 'Cuánto vale hoy en total'} (${esc(curSymbol(invCur(inv)))})</span>
         <input name="v" inputmode="decimal" autocomplete="off" required value="${numIn(cur)}" placeholder="0,00"></label>
       <div class="calc" id="calc"></div>
       <label class="field"><span>Fecha</span><input type="date" name="date" value="${todayKey()}" max="${todayKey()}"></label>
@@ -458,7 +492,7 @@ function renderValueForm(id) {
   const f = $('#f');
   const upd = () => {
     const v = parseNum(f.elements.v.value);
-    $('#calc').textContent = unitsMode && v >= 0 ? 'Valor de lo que tienes: ' + money(v * c.held) : '';
+    $('#calc').textContent = unitsMode && v >= 0 ? 'Valor de lo que tienes: ' + money(v * c.held, invCur(inv)) : '';
   };
   f.elements.v.addEventListener('input', upd);
   upd();
@@ -536,9 +570,10 @@ function renderMoveForm(id, params) {
       amount = q > 0 && p >= 0 ? q * p : NaN;
     } else amount = parseNum(f.elements.amount.value);
     if (!(amount >= 0)) { $('#calc').textContent = ''; return; }
-    const txt = curKind === 'buy' ? 'Te cuesta en total: ' + money(amount + fee)
-      : curKind === 'sell' ? 'Recibes en total: ' + money(amount - fee)
-      : 'Cobras en limpio: ' + money(amount - fee);
+    const mo = (x) => money(x, invCur(curInv()));
+    const txt = curKind === 'buy' ? 'Te cuesta en total: ' + mo(amount + fee)
+      : curKind === 'sell' ? 'Recibes en total: ' + mo(amount - fee)
+      : 'Cobras en limpio: ' + mo(amount - fee);
     $('#calc').textContent = txt;
   }
   drawKinds();
@@ -607,7 +642,10 @@ function renderMoves() {
   if (moveYear !== 'all' && !years.includes(moveYear)) moveYear = 'all';
   const list = state.moves.filter((m) => moveYear === 'all' || m.date.startsWith(moveYear)).sort(byDate).reverse();
   const sum = { buy: 0, sell: 0, income: 0 };
-  for (const m of list) sum[m.kind] += m.kind === 'buy' ? m.amount + (m.fee || 0) : m.amount - (m.fee || 0);
+  for (const m of list) {
+    const v = toBase(m.kind === 'buy' ? m.amount + (m.fee || 0) : m.amount - (m.fee || 0), invCur(invById(m.invId)));
+    if (v != null) sum[m.kind] += v;
+  }
 
   let html = '', month = '', open = false;
   for (const m of list) {
@@ -646,9 +684,16 @@ function renderSettings() {
   setChrome({ title: 'Ajustes', tab: 'settings' });
   view.innerHTML = `
     <section class="card form">
-      <label class="field"><span>Moneda</span>
+      <label class="field"><span>Moneda principal</span>
         <select id="cur">${CURRENCIES.map((c) => `<option ${c === state.currency ? 'selected' : ''}>${c}</option>`).join('')}</select>
-        <small>Solo cambia cómo se muestran los importes; no convierte nada.</small></label>
+        <small>En ella se suma el total de la cartera. Cada inversión puede tener su propia moneda (en Editar).</small></label>
+      ${otherCurrencies().map((c) => {
+        const r = state.rates && state.rates[c];
+        const ok = r && r.base === state.currency;
+        return `<label class="field"><span>Cambio: 1 ${esc(curSymbol(state.currency))} = ? ${esc(curSymbol(c))}</span>
+          <input class="rate" data-cur="${c}" inputmode="decimal" autocomplete="off" placeholder="Ej.: 1,08" value="${ok ? numIn(r.rate) : ''}">
+          <small>${ok ? 'Actualizado el ' + fmtDate(r.date) + '. ' : ''}Lo que has pagado también se convierte con este cambio.</small></label>`;
+      }).join('')}
     </section>
 
     <h2 class="section-title">Copia de seguridad</h2>
@@ -670,7 +715,17 @@ function renderSettings() {
     </section>
     <p class="note">${state.investments.length} inversiones · ${state.moves.length} movimientos · versión ${APP_VERSION}</p>`;
 
-  $('#cur').addEventListener('change', (e) => { state.currency = e.target.value; saveState(); toast('Moneda cambiada'); });
+  $('#cur').addEventListener('change', (e) => { state.currency = e.target.value; saveState(); toast('Moneda principal cambiada'); renderSettings(); });
+  for (const el of view.querySelectorAll('.rate')) {
+    el.addEventListener('change', () => {
+      const v = parseNum(el.value);
+      if (!(v > 0)) { toast('Escribe un número válido'); return; }
+      state.rates = state.rates || {};
+      state.rates[el.dataset.cur] = { base: state.currency, rate: v, date: todayKey() };
+      saveState();
+      toast('Cambio guardado');
+    });
+  }
   $('#exp').addEventListener('click', () => {
     shareFile('inversiones-' + todayKey() + '.json', JSON.stringify(Object.assign({ app: 'mis-inversiones', exported: new Date().toISOString() }, state), null, 2), 'application/json');
   });
@@ -679,7 +734,7 @@ function renderSettings() {
     const data = await readDataFile(e.target);
     if (!data) return;
     if (!confirm('Se cambiarán los datos actuales por los de la copia (' + data.investments.length + ' inversiones, ' + data.moves.length + ' movimientos). ¿Seguir?')) return;
-    state = Object.assign(freshState(), { currency: data.currency || 'EUR', investments: data.investments, moves: data.moves });
+    state = Object.assign(freshState(), { currency: data.currency || 'EUR', rates: data.rates || {}, investments: data.investments, moves: data.moves });
     saveState();
     toast('Copia recuperada');
     renderSettings();
@@ -687,10 +742,10 @@ function renderSettings() {
   $('#csv').addEventListener('click', () => {
     const q = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
     const n = (x) => (x == null ? '' : String(x).replace('.', ','));
-    const lines = [['Fecha', 'Inversión', 'Tipo', 'Plataforma', 'Movimiento', 'Participaciones', 'Precio', 'Importe', 'Comisión o retención', 'Nota'].map(q).join(';')];
+    const lines = [['Fecha', 'Inversión', 'Tipo', 'Plataforma', 'Movimiento', 'Participaciones', 'Precio', 'Importe', 'Comisión o retención', 'Moneda', 'Nota'].map(q).join(';')];
     for (const m of state.moves.slice().sort(byDate)) {
       const inv = invById(m.invId) || {};
-      lines.push([q(m.date), q(inv.name), q(typeOf(inv.type).name), q(inv.platform), q(kindName(m.kind, inv)), n(m.units), n(m.price), n(m.amount), n(m.fee || 0), q(m.note)].join(';'));
+      lines.push([q(m.date), q(inv.name), q(typeOf(inv.type).name), q(inv.platform), q(kindName(m.kind, inv)), n(m.units), n(m.price), n(m.amount), n(m.fee || 0), q(invCur(inv)), q(m.note)].join(';'));
     }
     shareFile('movimientos-' + todayKey() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv');
   });
@@ -701,6 +756,10 @@ function renderSettings() {
     toast('Datos borrados');
     go('#/');
   });
+}
+
+function otherCurrencies() {
+  return [...new Set(state.investments.map(invCur))].filter((c) => c !== state.currency).sort();
 }
 
 // ---------- Pantalla: pegar o importar inversiones ----------
@@ -755,12 +814,13 @@ function parseCompact(text) {
   const data = { investments: [], moves: [] };
   const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d);
   for (const line of lines.slice(1, -1)) {
-    const [name, type, platform, ticker, q, p, date, cur, curDate, note] = line.split(';').map((x) => (x || '').trim());
+    const [name, type, platform, ticker, q, p, date, cur, curDate, note, currency] = line.split(';').map((x) => (x || '').trim());
     const units = Number(q), buy = Number(p), now = cur === '' ? null : Number(cur);
     if (!name || !(units > 0) || !(buy >= 0) || !isDate(date) || (now != null && !(now >= 0)) || (curDate && !isDate(curDate))) throw new Error('línea');
     const id = 'p-' + (ticker || name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
     data.investments.push({
       id, name, type: TYPES.some((t) => t.id === type) ? type : 'otros', mode: 'units', platform: platform || '', ticker: ticker || '',
+      currency: CURRENCIES.includes((currency || '').toUpperCase()) ? currency.toUpperCase() : state.currency,
       notes: note || '', price: now, priceDate: curDate || null, value: null, valueDate: null, created: Date.now(),
     });
     data.moves.push({ id: id + '-compra', invId: id, kind: 'buy', date, units, price: buy, amount: units * buy, fee: 0, note: '', created: Date.now() });
