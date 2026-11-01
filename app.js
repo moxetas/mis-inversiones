@@ -3,7 +3,7 @@
 // Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '11';
+const APP_VERSION = '12';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -821,6 +821,9 @@ const LOCAL_LOGO = {
   ES0144580Y14: 'icons/logos/iberdrola.png',
   US88160R1014: 'icons/logos/tesla.png',
   BTC: 'icons/logos/bitcoin.png',
+  IE00B6R52259: 'icons/logos/ishares.png',      // gestora del ETF ACWI
+  DE000A0S9GB0: 'icons/logos/xetra-gold.png',   // Xetra-Gold
+  IE00B43VDT70: 'icons/logos/invesco.png',      // gestora del ETF de plata
 };
 function logoIds(inv) {
   const t = (inv.ticker || '').toUpperCase();

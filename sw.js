@@ -1,6 +1,6 @@
 // Guarda la app en el teléfono para que abra aunque no haya cobertura.
 // Cambia el número de CACHE cada vez que se publique una versión nueva.
-const CACHE = 'inversiones-v11';
+const CACHE = 'inversiones-v12';
 const FILES = [
   './',
   'index.html',
@@ -16,6 +16,9 @@ const FILES = [
   'icons/logos/iberdrola.png',
   'icons/logos/tesla.png',
   'icons/logos/bitcoin.png',
+  'icons/logos/ishares.png',
+  'icons/logos/xetra-gold.png',
+  'icons/logos/invesco.png',
 ];
 
 self.addEventListener('install', (event) => {
