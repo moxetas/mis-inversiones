@@ -3,7 +3,7 @@
 // Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '6';
+const APP_VERSION = '7';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -43,6 +43,8 @@ function saveState() {
 }
 
 let state = loadState();
+// El Bitcoin se compró en dólares: si aún no tiene moneda, se le pone USD
+for (const i of state.investments) if (i.id === 'p-btc' && !i.currency) i.currency = 'USD';
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function esc(s) {
@@ -261,6 +263,8 @@ function renderHome() {
       </div>
     </section>
 
+    <div style="margin-bottom:16px">${priceButton()}</div>
+
     ${missing.length ? `<p class="note">⚠︎ Falta el cambio de ${missing.map(esc).join(', ')} a ${esc(state.currency)}: esas inversiones no se suman al total. Ponlo en <a href="#/ajustes">Ajustes</a>.</p>` : ''}
 
     ${stale.length ? `<p class="note">⚠︎ ${stale.length === 1 ? 'Hay 1 inversión' : 'Hay ' + stale.length + ' inversiones'} sin actualizar el precio desde hace más de ${STALE_DAYS} días: el valor puede no ser el real.</p>` : ''}
@@ -287,6 +291,7 @@ function renderHome() {
     <h2 class="section-title">Tus inversiones más grandes</h2>
     <div class="list">${top.map(invRow).join('')}</div>
     <a class="btn secondary" href="#/inversiones">Ver todas</a>`;
+  bindPriceButton();
 }
 
 function invRow({ inv, c }) {
@@ -318,7 +323,9 @@ function renderList() {
   view.innerHTML = `
     ${open.length ? `<div class="list">${open.map(invRow).join('')}</div>` : ''}
     ${closed.length ? `<h2 class="section-title">Cerradas (ya vendidas o retiradas)</h2><div class="list">${closed.map(invRow).join('')}</div>` : ''}
+    <div style="margin-bottom:12px">${priceButton()}</div>
     <a class="btn" href="#/inv/nueva">${ICON_PLUS} Añadir inversión</a>`;
+  bindPriceButton();
 }
 
 // ---------- Pantalla: detalle de una inversión ----------
@@ -352,7 +359,7 @@ function renderDetail(id) {
         <div class="stat"><div class="k">Dinero aportado</div><div class="v">${mo(c.contributed)}</div></div>
         <div class="stat"><div class="k">Dinero retirado</div><div class="v">${mo(c.withdrawn)}</div></div>
         <div class="stat"><div class="k">${inv.type === 'depositos' || inv.type === 'rentafija' ? 'Intereses' : 'Dividendos e intereses'}</div><div class="v">${mo(c.income)}</div></div>
-        <div class="stat"><div class="k">${unitsMode ? 'Precio actualizado' : 'Valor actualizado'}</div><div class="v">${u ? fmtDate(u) : 'Nunca'}</div></div>
+        <div class="stat"><div class="k">${unitsMode ? 'Precio actualizado' : 'Valor actualizado'}</div><div class="v">${u ? fmtDate(u) : 'Nunca'}${unitsMode && inv.priceSource && u ? '<div class="s" style="font-weight:400;font-size:13px;color:var(--muted)">TradingView · ' + esc(inv.priceSource) + '</div>' : ''}</div></div>
       </div>
     </section>
 
@@ -418,6 +425,9 @@ function renderInvForm(id) {
         <label class="field"><span>Ticker o ISIN</span>
           <input name="ticker" maxlength="20" autocapitalize="characters" placeholder="Opcional" value="${esc(inv ? inv.ticker : '')}"></label>
       </div>
+      <label class="field"><span>Símbolo en TradingView</span>
+        <input name="tv" maxlength="40" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="${esc(inv && tvCandidates(Object.assign({}, inv, { tv: '' }))[0] ? 'Automático: ' + tvCandidates(Object.assign({}, inv, { tv: '' }))[0] : 'Ej.: XETR:APC')}" value="${esc(inv && inv.tv ? inv.tv : '')}">
+        <small>Para «Actualizar precios». Déjalo vacío para usar el automático. Debe cotizar en la moneda de la inversión.</small></label>
       <datalist id="plats">${plats.map((p) => `<option value="${esc(p)}">`).join('')}</datalist>
       <label class="field"><span>Notas</span>
         <textarea name="notes" maxlength="500" placeholder="Opcional">${esc(inv ? inv.notes : '')}</textarea></label>
@@ -442,6 +452,7 @@ function renderInvForm(id) {
       currency: f.elements.currency.value,
       platform: f.elements.platform.value.trim(),
       ticker: f.elements.ticker.value.trim().toUpperCase(),
+      tv: f.elements.tv.value.trim().toUpperCase(),
       notes: f.elements.notes.value.trim(),
     };
     if (!hasMoves) data.mode = f.querySelector('[name=mode]:checked').value;
@@ -501,7 +512,7 @@ function renderValueForm(id) {
     const v = parseNum(f.elements.v.value);
     if (!(v >= 0)) { toast('Escribe un número válido'); f.elements.v.focus(); return; }
     const d = f.elements.date.value || todayKey();
-    if (unitsMode) { inv.price = v; inv.priceDate = d; }
+    if (unitsMode) { inv.price = v; inv.priceDate = d; inv.priceSource = null; }
     else { inv.value = v; inv.valueDate = d; }
     saveState();
     toast('Actualizado');
@@ -609,7 +620,7 @@ function renderMoveForm(id, params) {
     if (m) Object.assign(m, data);
     else state.moves.push(Object.assign({ id: uid(), created: Date.now() }, data));
     // Si no hay un precio más reciente, el precio de esta operación pasa a ser el precio actual
-    if (data.price != null && (!inv.priceDate || date >= inv.priceDate)) { inv.price = data.price; inv.priceDate = date; }
+    if (data.price != null && (!inv.priceDate || date >= inv.priceDate)) { inv.price = data.price; inv.priceDate = date; inv.priceSource = null; }
     saveState();
     toast(m ? 'Guardado' : 'Movimiento apuntado');
     if (presetInv) location.replace('#/inv/' + inv.id);
@@ -758,6 +769,98 @@ function renderSettings() {
   });
 }
 
+// ---------- Precios desde TradingView ----------
+// El iPhone pide los precios directamente a TradingView (no pasa por ningún servidor nuestro).
+// Para cada inversión se prueban varios símbolos en orden y se usa el primero que responde en su moneda.
+
+const TV_BY_ISIN = {
+  US0079031078: ['XETR:AMD', 'FWB:AMD', 'GETTEX:AMD', 'TRADEGATE:AMD'],          // AMD en euros
+  US88160R1014: ['XETR:TL0', 'FWB:TL0', 'GETTEX:TL0', 'TRADEGATE:TL0'],          // Tesla en euros
+  US0378331005: ['XETR:APC', 'FWB:APC', 'GETTEX:APC', 'TRADEGATE:APC'],          // Apple en euros
+  ES0144580Y14: ['BME:IBE'],                                                      // Iberdrola
+  ES0140609019: ['BME:CABK'],                                                     // CaixaBank
+  IE00B6R52259: ['XETR:IUSQ', 'FWB:IUSQ', 'GETTEX:IUSQ'],                        // iShares MSCI ACWI
+  IE00B43VDT70: ['XETR:8PSB', 'FWB:8PSB', 'GETTEX:8PSB'],                        // Invesco Physical Silver
+  DE000A0S9GB0: ['XETR:4GLD', 'FWB:4GLD', 'GETTEX:4GLD'],                        // Xetra-Gold
+};
+
+function tvCandidates(inv) {
+  if (inv.tv) return [inv.tv.trim().toUpperCase()];
+  const t = (inv.ticker || '').toUpperCase();
+  if (TV_BY_ISIN[t]) return TV_BY_ISIN[t];
+  if (inv.type === 'cripto' && t) {
+    const cur = invCur(inv);
+    return ['BITSTAMP:' + t + cur, 'COINBASE:' + t + cur, 'KRAKEN:' + t + cur];
+  }
+  return [];
+}
+function tvFxCandidates(cur) {
+  const pair = state.currency + cur;
+  return ['FX_IDC:' + pair, 'FX:' + pair, 'OANDA:' + pair];
+}
+
+async function tvQuotes(tickers) {
+  const markets = ['global', 'germany', 'spain', 'crypto', 'forex'];
+  const body = JSON.stringify({ symbols: { tickers, query: { types: [] } }, columns: ['close', 'currency'] });
+  const out = {};
+  let answered = 0;
+  await Promise.all(markets.map(async (mk) => {
+    try {
+      // text/plain: así el iPhone no tiene que pedir permiso previo a TradingView
+      const res = await fetch('https://scanner.tradingview.com/' + mk + '/scan', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body });
+      if (!res.ok) return;
+      const json = await res.json();
+      answered++;
+      for (const row of json.data || []) {
+        const [close, currency] = row.d || [];
+        if (typeof close === 'number' && close > 0 && !out[row.s]) out[row.s] = { close, currency: (currency || '').toUpperCase() };
+      }
+    } catch (e) { /* sin respuesta de ese mercado */ }
+  }));
+  return { quotes: out, answered };
+}
+
+async function updatePrices(btn) {
+  const invs = state.investments.filter((i) => i.mode === 'units' && !calc(i).closed);
+  const curs = otherCurrencies();
+  const tickers = [...new Set([...invs.flatMap(tvCandidates), ...curs.flatMap(tvFxCandidates)])];
+  if (!tickers.length) { toast('No hay inversiones con símbolo de TradingView'); return; }
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Pidiendo precios a TradingView…';
+  try {
+    const { quotes, answered } = await tvQuotes(tickers);
+    if (!answered) {
+      alert('TradingView no ha respondido. Puede que no deje a la app pedir precios desde el iPhone, o que no haya conexión. Comprueba la conexión y vuelve a probar; si sigue igual, cuéntaselo a Claude.');
+      return;
+    }
+    const today = todayKey(), done = [], missing = [];
+    for (const inv of invs) {
+      const sym = tvCandidates(inv).find((t) => quotes[t] && (!quotes[t].currency || quotes[t].currency === invCur(inv)));
+      if (sym) { inv.price = quotes[sym].close; inv.priceDate = today; inv.priceSource = sym; done.push(inv.name); }
+      else missing.push(inv.name);
+    }
+    for (const cur of curs) {
+      const sym = tvFxCandidates(cur).find((t) => quotes[t]);
+      if (sym) { state.rates = state.rates || {}; state.rates[cur] = { base: state.currency, rate: quotes[sym].close, date: today, source: sym }; }
+      else missing.push('cambio ' + state.currency + '/' + cur);
+    }
+    saveState();
+    render();
+    if (missing.length) alert('Precios actualizados: ' + done.length + ' de ' + invs.length + '.\n\nSin precio de TradingView: ' + missing.join(', ') + '.\n\nPuedes poner su símbolo de TradingView en Editar, o el precio a mano.');
+    else toast('Precios actualizados (' + done.length + ')');
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+function priceButton() {
+  return '<button class="btn secondary" type="button" id="upd-prices">Actualizar precios</button>';
+}
+function bindPriceButton() {
+  const b = $('#upd-prices');
+  if (b) b.addEventListener('click', () => updatePrices(b));
+}
+
 function otherCurrencies() {
   return [...new Set(state.investments.map(invCur))].filter((c) => c !== state.currency).sort();
 }
@@ -820,7 +923,7 @@ function parseCompact(text) {
     const id = 'p-' + (ticker || name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
     data.investments.push({
       id, name, type: TYPES.some((t) => t.id === type) ? type : 'otros', mode: 'units', platform: platform || '', ticker: ticker || '',
-      currency: CURRENCIES.includes((currency || '').toUpperCase()) ? currency.toUpperCase() : state.currency,
+      currency: CURRENCIES.includes((currency || '').toUpperCase()) ? currency.toUpperCase() : undefined,
       notes: note || '', price: now, priceDate: curDate || null, value: null, valueDate: null, created: Date.now(),
     });
     data.moves.push({ id: id + '-compra', invId: id, kind: 'buy', date, units, price: buy, amount: units * buy, fee: 0, note: '', created: Date.now() });
