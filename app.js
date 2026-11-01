@@ -55,8 +55,8 @@ function nf(opts) {
   catch (e) { return new Intl.NumberFormat('es-ES', opts); }
 }
 function money(n) { return nf({ style: 'currency', currency: state.currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0); }
-function price(n) { return nf({ style: 'currency', currency: state.currency, minimumFractionDigits: 2, maximumFractionDigits: Math.abs(n || 0) < 1 ? 6 : 4 }).format(n || 0); }
-function units(n) { return nf({ maximumFractionDigits: 6 }).format(n || 0); }
+function price(n) { const a = Math.abs(n || 0); return nf({ style: 'currency', currency: state.currency, minimumFractionDigits: 2, maximumFractionDigits: a >= 1000 ? 2 : a >= 1 ? 4 : 6 }).format(n || 0); }
+function units(n) { return nf({ maximumFractionDigits: 8 }).format(n || 0); }
 function pct(n) { return nf({ style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n || 0); }
 function signed(n, fmt) {
   const f = fmt || money;
