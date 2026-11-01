@@ -107,6 +107,7 @@ main {
   padding: 16px 16px calc(96px + env(safe-area-inset-bottom, 0px));
   outline: none;
 }
+main:focus, main:focus-visible { outline: none; }
 
 .card {
   background: var(--surface);

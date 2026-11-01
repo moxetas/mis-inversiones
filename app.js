@@ -3,6 +3,7 @@
 // Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
+const APP_VERSION = '4';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -667,7 +668,7 @@ function renderSettings() {
     <section class="card form">
       <button class="btn danger" type="button" id="wipe">Borrar todos los datos</button>
     </section>
-    <p class="note">${state.investments.length} inversiones · ${state.moves.length} movimientos</p>`;
+    <p class="note">${state.investments.length} inversiones · ${state.moves.length} movimientos · versión ${APP_VERSION}</p>`;
 
   $('#cur').addEventListener('change', (e) => { state.currency = e.target.value; saveState(); toast('Moneda cambiada'); });
   $('#exp').addEventListener('click', () => {
@@ -840,5 +841,18 @@ window.addEventListener('hashchange', render);
 render();
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  // Si había una versión instalada y llega otra nueva, se recarga sola para mostrarla
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {}));
+  // En el iPhone la app suele volver del segundo plano sin recargarse: al volver, busca si hay versión nueva
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+  });
 }
