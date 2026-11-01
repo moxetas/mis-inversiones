@@ -26,7 +26,7 @@ La app se publica con GitHub Pages. Solo hay que activarlo una vez:
 1. En GitHub, abre el repositorio y ve a **Settings → Pages**.
 2. En **Build and deployment → Source**, elige **Deploy from a branch**.
 3. En **Branch**, elige **main** y la carpeta **/ (root)**. Pulsa **Save**.
-4. Al cabo de uno o dos minutos, la app estará en `https://moxetas.github.io/mis-inversiones-/`.
+4. Al cabo de uno o dos minutos, la app estará en `https://moxetas.github.io/mis-inversiones/`.
 
 Después, en el iPhone:
 
