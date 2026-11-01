@@ -1,9 +1,9 @@
 'use strict';
 
-// Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
+// Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '13';
+const APP_VERSION = '14';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -203,7 +203,7 @@ const ICON_EDIT = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path 
 
 function setChrome({ title, tab, back, action }) {
   $('#title').textContent = title;
-  document.title = title === 'Mis inversiones' ? title : title + ' · Mis inversiones';
+  document.title = title === 'Moxetas Invest' ? title : title + ' · Moxetas Invest';
   $('#back-btn').hidden = !back;
   $('#back-btn').dataset.to = back || '';
   $('#actions').innerHTML = action
@@ -224,7 +224,7 @@ function go(hash) { location.hash = hash; }
 // ---------- Pantalla: Resumen ----------
 
 function renderHome() {
-  setChrome({ title: 'Mis inversiones', tab: 'home', action: { href: '#/inv/nueva', label: 'Añadir inversión', icon: ICON_PLUS } });
+  setChrome({ title: 'Moxetas Invest', tab: 'home', action: { href: '#/inv/nueva', label: 'Añadir inversión', icon: ICON_PLUS } });
   if (!state.investments.length) {
     view.innerHTML = `
       <div class="card empty">
@@ -932,7 +932,7 @@ function renderAdd() {
   $('#paste-btn').addEventListener('click', () => {
     const text = $('#paste').value.trim();
     if (!text) { toast('Primero pega el texto'); $('#paste').focus(); return; }
-    const data = parseData(text, 'Ese texto no es de Mis inversiones: cópialo entero');
+    const data = parseData(text, 'Ese texto no es de Moxetas Invest: cópialo entero');
     if (data) addData(data);
   });
   $('#add-btn').addEventListener('click', () => $('#add').click());
@@ -1001,7 +1001,7 @@ async function readDataFile(input) {
   const file = input.files[0];
   input.value = '';
   if (!file) return null;
-  return parseData(await file.text(), 'Ese archivo no es de Mis inversiones');
+  return parseData(await file.text(), 'Ese archivo no es de Moxetas Invest');
 }
 
 // En el iPhone abre el menú de compartir (Guardar en Archivos, AirDrop…); si no, descarga el archivo

@@ -1,4 +1,4 @@
-# Mis inversiones
+# Moxetas Invest
 
 App para **apuntar todas tus inversiones** y ver cuánto ganas o pierdes. Se instala en el iPhone desde Safari, sin pasar por la App Store, y funciona sin conexión.
 
