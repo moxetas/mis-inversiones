@@ -202,6 +202,8 @@ function renderHome() {
         <p>Apunta cada inversión (acciones, fondos, depósitos…) y sus compras, ventas y dividendos. La app calcula cuánto vale tu cartera y cuánto ganas o pierdes.</p>
         <a class="btn" href="#/inv/nueva">Añadir mi primera inversión</a>
         <p></p>
+        <a class="btn secondary" href="#/anadir">Pegar o importar mis inversiones</a>
+        <p></p>
         <button class="btn secondary" type="button" id="demo">Probar con datos de ejemplo</button>
       </div>`;
     $('#demo').addEventListener('click', loadDemo);
@@ -658,10 +660,8 @@ function renderSettings() {
     </section>
 
     <h2 class="section-title">Añadir inversiones</h2>
-    <p class="note">Añade las inversiones de un archivo a las que ya tienes, sin borrar nada. Las que ya estaban no se duplican.</p>
     <section class="card form">
-      <button class="btn secondary" type="button" id="add-btn">Añadir inversiones desde un archivo</button>
-      <input type="file" id="add" hidden>
+      <a class="btn secondary" href="#/anadir">Pegar o importar inversiones</a>
     </section>
 
     <section class="card form">
@@ -683,22 +683,6 @@ function renderSettings() {
     toast('Copia recuperada');
     renderSettings();
   });
-  $('#add-btn').addEventListener('click', () => $('#add').click());
-  $('#add').addEventListener('change', async (e) => {
-    const data = await readDataFile(e.target);
-    if (!data) return;
-    const have = new Set(state.investments.map((i) => i.id));
-    const invs = data.investments.filter((i) => !have.has(i.id));
-    const ids = new Set(invs.map((i) => i.id));
-    const moves = data.moves.filter((m) => ids.has(m.invId) && !state.moves.some((x) => x.id === m.id));
-    if (!invs.length) { toast('Esas inversiones ya están en la app'); return; }
-    if (!confirm((invs.length === 1 ? 'Se añadirá 1 inversión (' : 'Se añadirán ' + invs.length + ' inversiones (') + invs.map((i) => i.name).join(', ') + ') a las que ya tienes. ¿Seguir?')) return;
-    state.investments.push(...invs);
-    state.moves.push(...moves);
-    saveState();
-    toast(invs.length === 1 ? 'Inversión añadida' : invs.length + ' inversiones añadidas');
-    go('#/inversiones');
-  });
   $('#csv').addEventListener('click', () => {
     const q = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
     const n = (x) => (x == null ? '' : String(x).replace('.', ','));
@@ -718,22 +702,70 @@ function renderSettings() {
   });
 }
 
-// Lee un archivo de copia (o de inversiones para añadir) y comprueba que tiene el formato de la app
-async function readDataFile(input) {
-  const file = input.files[0];
-  input.value = '';
-  if (!file) return null;
+// ---------- Pantalla: pegar o importar inversiones ----------
+
+function renderAdd() {
+  setChrome({ title: 'Añadir inversiones', tab: 'settings', back: '#/ajustes' });
+  view.innerHTML = `
+    <p class="note">Añade inversiones a las que ya tienes, sin borrar nada. Las que ya estaban no se duplican.</p>
+    <section class="card form">
+      <label class="field"><span>Pega aquí el texto</span>
+        <textarea id="paste" rows="6" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Mantén pulsado y elige «Pegar»"></textarea></label>
+      <button class="btn" type="button" id="paste-btn">Añadir lo pegado</button>
+    </section>
+    <section class="card form">
+      <button class="btn secondary" type="button" id="add-btn">Elegir un archivo</button>
+      <input type="file" id="add" hidden>
+    </section>`;
+  $('#paste-btn').addEventListener('click', () => {
+    const text = $('#paste').value.trim();
+    if (!text) { toast('Primero pega el texto'); $('#paste').focus(); return; }
+    const data = parseData(text, 'Ese texto no es de Mis inversiones: cópialo entero');
+    if (data) addData(data);
+  });
+  $('#add-btn').addEventListener('click', () => $('#add').click());
+  $('#add').addEventListener('change', async (e) => {
+    const data = await readDataFile(e.target);
+    if (data) addData(data);
+  });
+}
+
+// Añade las inversiones nuevas (y sus movimientos) sin tocar las que ya hay
+function addData(data) {
+  const have = new Set(state.investments.map((i) => i.id));
+  const invs = data.investments.filter((i) => !have.has(i.id));
+  const ids = new Set(invs.map((i) => i.id));
+  const moves = data.moves.filter((m) => ids.has(m.invId) && !state.moves.some((x) => x.id === m.id));
+  if (!invs.length) { toast('Esas inversiones ya están en la app'); return; }
+  if (!confirm((invs.length === 1 ? 'Se añadirá 1 inversión (' : 'Se añadirán ' + invs.length + ' inversiones (') + invs.map((i) => i.name).join(', ') + ') a las que ya tienes. ¿Seguir?')) return;
+  state.investments.push(...invs);
+  state.moves.push(...moves);
+  saveState();
+  toast(invs.length === 1 ? 'Inversión añadida' : invs.length + ' inversiones añadidas');
+  go('#/inversiones');
+}
+
+// Comprueba que un texto tiene el formato de la app
+function parseData(text, errorMsg) {
   try {
-    const data = JSON.parse(await file.text());
-    const ok = Array.isArray(data.investments) && Array.isArray(data.moves)
+    const data = JSON.parse(text);
+    const ok = data && Array.isArray(data.investments) && Array.isArray(data.moves)
       && data.investments.every((i) => i && i.id && i.name && (i.mode === 'units' || i.mode === 'amount'))
       && data.moves.every((m) => m && m.id && m.invId && ['buy', 'sell', 'income'].includes(m.kind) && /^\d{4}-\d{2}-\d{2}$/.test(m.date) && typeof m.amount === 'number');
     if (!ok) throw new Error('formato');
     return data;
   } catch (err) {
-    toast('Ese archivo no es de Mis inversiones');
+    toast(errorMsg);
     return null;
   }
+}
+
+// Lee un archivo de copia (o de inversiones para añadir)
+async function readDataFile(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return null;
+  return parseData(await file.text(), 'Ese archivo no es de Mis inversiones');
 }
 
 // En el iPhone abre el menú de compartir (Guardar en Archivos, AirDrop…); si no, descarga el archivo
@@ -792,6 +824,7 @@ function render() {
   else if (p[0] === 'inversiones') renderList();
   else if (p[0] === 'movimientos') renderMoves();
   else if (p[0] === 'ajustes') renderSettings();
+  else if (p[0] === 'anadir') renderAdd();
   else if (p[0] === 'inv' && p[1] === 'nueva') renderInvForm(null);
   else if (p[0] === 'inv' && p[2] === 'editar') renderInvForm(p[1]);
   else if (p[0] === 'inv' && p[2] === 'valor') renderValueForm(p[1]);
