@@ -653,8 +653,15 @@ function renderSettings() {
     <section class="card form">
       <button class="btn" type="button" id="exp">Guardar copia de seguridad</button>
       <button class="btn secondary" type="button" id="imp-btn">Recuperar desde una copia</button>
-      <input type="file" id="imp" accept="application/json,.json" hidden>
+      <input type="file" id="imp" hidden>
       <button class="btn secondary" type="button" id="csv">Exportar movimientos a Excel (CSV)</button>
+    </section>
+
+    <h2 class="section-title">Añadir inversiones</h2>
+    <p class="note">Añade las inversiones de un archivo a las que ya tienes, sin borrar nada. Las que ya estaban no se duplican.</p>
+    <section class="card form">
+      <button class="btn secondary" type="button" id="add-btn">Añadir inversiones desde un archivo</button>
+      <input type="file" id="add" hidden>
     </section>
 
     <section class="card form">
@@ -668,20 +675,29 @@ function renderSettings() {
   });
   $('#imp-btn').addEventListener('click', () => $('#imp').click());
   $('#imp').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      if (!Array.isArray(data.investments) || !Array.isArray(data.moves)) throw new Error('formato');
-      if (!confirm('Se cambiarán los datos actuales por los de la copia (' + data.investments.length + ' inversiones, ' + data.moves.length + ' movimientos). ¿Seguir?')) return;
-      state = Object.assign(freshState(), { currency: data.currency || 'EUR', investments: data.investments, moves: data.moves });
-      saveState();
-      toast('Copia recuperada');
-      renderSettings();
-    } catch (err) {
-      toast('Ese archivo no es una copia válida');
-    }
+    const data = await readDataFile(e.target);
+    if (!data) return;
+    if (!confirm('Se cambiarán los datos actuales por los de la copia (' + data.investments.length + ' inversiones, ' + data.moves.length + ' movimientos). ¿Seguir?')) return;
+    state = Object.assign(freshState(), { currency: data.currency || 'EUR', investments: data.investments, moves: data.moves });
+    saveState();
+    toast('Copia recuperada');
+    renderSettings();
+  });
+  $('#add-btn').addEventListener('click', () => $('#add').click());
+  $('#add').addEventListener('change', async (e) => {
+    const data = await readDataFile(e.target);
+    if (!data) return;
+    const have = new Set(state.investments.map((i) => i.id));
+    const invs = data.investments.filter((i) => !have.has(i.id));
+    const ids = new Set(invs.map((i) => i.id));
+    const moves = data.moves.filter((m) => ids.has(m.invId) && !state.moves.some((x) => x.id === m.id));
+    if (!invs.length) { toast('Esas inversiones ya están en la app'); return; }
+    if (!confirm('Se añadirán ' + invs.length + ' inversiones (' + invs.map((i) => i.name).join(', ') + ') a las que ya tienes. ¿Seguir?')) return;
+    state.investments.push(...invs);
+    state.moves.push(...moves);
+    saveState();
+    toast(invs.length === 1 ? 'Inversión añadida' : invs.length + ' inversiones añadidas');
+    go('#/inversiones');
   });
   $('#csv').addEventListener('click', () => {
     const q = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
@@ -700,6 +716,24 @@ function renderSettings() {
     toast('Datos borrados');
     go('#/');
   });
+}
+
+// Lee un archivo de copia (o de inversiones para añadir) y comprueba que tiene el formato de la app
+async function readDataFile(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return null;
+  try {
+    const data = JSON.parse(await file.text());
+    const ok = Array.isArray(data.investments) && Array.isArray(data.moves)
+      && data.investments.every((i) => i && i.id && i.name && (i.mode === 'units' || i.mode === 'amount'))
+      && data.moves.every((m) => m && m.id && m.invId && ['buy', 'sell', 'income'].includes(m.kind) && /^\d{4}-\d{2}-\d{2}$/.test(m.date) && typeof m.amount === 'number');
+    if (!ok) throw new Error('formato');
+    return data;
+  } catch (err) {
+    toast('Ese archivo no es de Mis inversiones');
+    return null;
+  }
 }
 
 // En el iPhone abre el menú de compartir (Guardar en Archivos, AirDrop…); si no, descarga el archivo
