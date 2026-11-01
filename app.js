@@ -3,7 +3,7 @@
 // Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '8';
+const APP_VERSION = '9';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -50,6 +50,8 @@ for (const i of state.investments) {
   if (!i.currency) i.currency = 'USD';
   if (!i.platform) i.platform = 'Ledger';
 }
+// Las acciones traspasadas desde Trading 212 están en Interactive Brokers
+for (const i of state.investments) if (i.platform === 'Traspaso de Trading 212') i.platform = 'Interactive Brokers';
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function esc(s) {
