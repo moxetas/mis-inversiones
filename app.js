@@ -3,7 +3,7 @@
 // Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '9';
+const APP_VERSION = '10';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -306,7 +306,7 @@ function invRow({ inv, c }) {
   const sub = [typeOf(inv.type).name, inv.platform].filter(Boolean).join(' · ');
   return `
     <a class="row" href="#/inv/${inv.id}">
-      <span class="dot" style="background:${typeColor(inv.type)}"></span>
+      ${logoHtml(inv, 40)}
       <span class="main"><div class="t">${esc(inv.name)}</div><div class="s">${esc(sub)}</div></span>
       <span class="end">
         <div class="num">${m(c.value)}</div>
@@ -352,7 +352,7 @@ function renderDetail(id) {
 
   view.innerHTML = `
     <section class="card hero">
-      <div class="label">${esc(sub)}</div>
+      <div class="hero-head">${logoHtml(inv, 44)}<div class="label">${esc(sub)}</div></div>
       <div class="big num">${mo(c.value)}</div>
       ${cur !== state.currency ? `<div class="label num">${inBase != null ? '≈ ' + money(inBase) + ' (1 ' + esc(curSymbol(state.currency)) + ' = ' + nf({ maximumFractionDigits: 4 }).format(rate.rate) + ' ' + esc(curSymbol(cur)) + ')' : 'Falta el cambio de ' + esc(cur) + ' en Ajustes'}</div>` : ''}
       <div class="delta num ${cls(c.gain)}">${arrow(c.gain)}${signed(c.gain, mo)} (${signed(c.pct, pct)}) en total</div>
@@ -801,6 +801,35 @@ function tvCandidates(inv) {
   }
   return [];
 }
+// Logos: los mismos que usa TradingView. Si uno no carga, se prueba el siguiente y al final se ponen las iniciales.
+const LOGO_BY_ISIN = {
+  US0079031078: ['advanced-micro-devices'],
+  US88160R1014: ['tesla'],
+  US0378331005: ['apple'],
+  ES0144580Y14: ['iberdrola'],
+  ES0140609019: ['caixabank'],
+  IE00B6R52259: ['ishares', 'blackrock'],                                          // gestora: iShares (BlackRock)
+  IE00B43VDT70: ['invesco'],                                                      // gestora: Invesco
+  DE000A0S9GB0: ['xetra-gold', 'deutsche-borse-commodities', 'deutsche-boerse'],   // emisor: Xetra-Gold (Deutsche Börse Commodities)
+  BTC: ['crypto/XTVCBTC'],
+};
+function logoIds(inv) {
+  const t = (inv.ticker || '').toUpperCase();
+  return [...new Set([inv.logo, ...(LOGO_BY_ISIN[t] || [])].filter(Boolean))];
+}
+function logoHtml(inv, size) {
+  const ini = esc((inv.name || '?').replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).toUpperCase());
+  const st = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.36)}px;background:${typeColor(inv.type)}`;
+  const srcs = logoIds(inv).flatMap((id) => ['https://s3-symbol-logo.tradingview.com/' + id + '--big.svg', 'https://s3-symbol-logo.tradingview.com/' + id + '.svg']);
+  if (!srcs.length) return `<span class="logo ini" style="${st}" aria-hidden="true">${ini}</span>`;
+  return `<span class="logo" style="${st}" aria-hidden="true"><img src="${esc(srcs[0])}" data-srcs="${esc(srcs.join('|'))}" data-i="0" alt="" onerror="nextLogo(this)"><b>${ini}</b></span>`;
+}
+// Si un logo falla, prueba el siguiente; si no queda ninguno, se ven las iniciales que hay debajo
+function nextLogo(img) {
+  const list = img.dataset.srcs.split('|'), i = Number(img.dataset.i) + 1;
+  if (i < list.length) { img.dataset.i = i; img.src = list[i]; } else img.remove();
+}
+
 function tvFxCandidates(cur) {
   const pair = state.currency + cur;
   return ['FX_IDC:' + pair, 'FX:' + pair, 'OANDA:' + pair];
@@ -808,7 +837,7 @@ function tvFxCandidates(cur) {
 
 async function tvQuotes(tickers) {
   const markets = ['global', 'germany', 'spain', 'crypto', 'forex'];
-  const body = JSON.stringify({ symbols: { tickers, query: { types: [] } }, columns: ['close', 'currency'] });
+  const body = JSON.stringify({ symbols: { tickers, query: { types: [] } }, columns: ['close', 'currency', 'logoid', 'base_currency_logoid'] });
   const out = {};
   let answered = 0;
   await Promise.all(markets.map(async (mk) => {
@@ -819,8 +848,8 @@ async function tvQuotes(tickers) {
       const json = await res.json();
       answered++;
       for (const row of json.data || []) {
-        const [close, currency] = row.d || [];
-        if (typeof close === 'number' && close > 0 && !out[row.s]) out[row.s] = { close, currency: (currency || '').toUpperCase() };
+        const [close, currency, logoid, baseLogo] = row.d || [];
+        if (typeof close === 'number' && close > 0 && !out[row.s]) out[row.s] = { close, currency: (currency || '').toUpperCase(), logo: logoid || baseLogo || null };
       }
     } catch (e) { /* sin respuesta de ese mercado */ }
   }));
@@ -843,7 +872,7 @@ async function updatePrices(btn) {
     const today = todayKey(), done = [], missing = [];
     for (const inv of invs) {
       const sym = tvCandidates(inv).find((t) => quotes[t] && (!quotes[t].currency || quotes[t].currency === invCur(inv)));
-      if (sym) { inv.price = quotes[sym].close; inv.priceDate = today; inv.priceSource = sym; done.push(inv.name); }
+      if (sym) { inv.price = quotes[sym].close; inv.priceDate = today; inv.priceSource = sym; if (quotes[sym].logo) inv.logo = quotes[sym].logo; done.push(inv.name); }
       else missing.push(inv.name);
     }
     for (const cur of curs) {
