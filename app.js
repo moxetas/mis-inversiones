@@ -3,7 +3,7 @@
 // Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '10';
+const APP_VERSION = '11';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -813,6 +813,15 @@ const LOGO_BY_ISIN = {
   DE000A0S9GB0: ['xetra-gold', 'deutsche-borse-commodities', 'deutsche-boerse'],   // emisor: Xetra-Gold (Deutsche Börse Commodities)
   BTC: ['crypto/XTVCBTC'],
 };
+// Logos guardados dentro de la app (recortados de TradingView): se ven siempre, también sin conexión
+const LOCAL_LOGO = {
+  US0079031078: 'icons/logos/amd.png',
+  US0378331005: 'icons/logos/apple.png',
+  ES0140609019: 'icons/logos/caixabank.png',
+  ES0144580Y14: 'icons/logos/iberdrola.png',
+  US88160R1014: 'icons/logos/tesla.png',
+  BTC: 'icons/logos/bitcoin.png',
+};
 function logoIds(inv) {
   const t = (inv.ticker || '').toUpperCase();
   return [...new Set([inv.logo, ...(LOGO_BY_ISIN[t] || [])].filter(Boolean))];
@@ -820,7 +829,8 @@ function logoIds(inv) {
 function logoHtml(inv, size) {
   const ini = esc((inv.name || '?').replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).toUpperCase());
   const st = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.36)}px;background:${typeColor(inv.type)}`;
-  const srcs = logoIds(inv).flatMap((id) => ['https://s3-symbol-logo.tradingview.com/' + id + '--big.svg', 'https://s3-symbol-logo.tradingview.com/' + id + '.svg']);
+  const local = LOCAL_LOGO[(inv.ticker || '').toUpperCase()];
+  const srcs = [local, ...logoIds(inv).flatMap((id) => ['https://s3-symbol-logo.tradingview.com/' + id + '--big.svg', 'https://s3-symbol-logo.tradingview.com/' + id + '.svg'])].filter(Boolean);
   if (!srcs.length) return `<span class="logo ini" style="${st}" aria-hidden="true">${ini}</span>`;
   return `<span class="logo" style="${st}" aria-hidden="true"><img src="${esc(srcs[0])}" data-srcs="${esc(srcs.join('|'))}" data-i="0" alt="" onerror="nextLogo(this)"><b>${ini}</b></span>`;
 }
