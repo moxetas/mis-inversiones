@@ -3,7 +3,7 @@
 // Mis inversiones: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '4';
+const APP_VERSION = '5';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -746,10 +746,33 @@ function addData(data) {
   go('#/inversiones');
 }
 
+// Formato corto para pegar: «INV1», una línea por inversión y «FIN» al final (así se sabe que llegó entero).
+// Cada línea: nombre;tipo;plataforma;ticker;cantidad;precio de compra;fecha de compra;precio actual;fecha del precio;nota
+function parseCompact(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!/^INV1$/i.test(lines[0] || '')) return null;
+  if (!/^FIN$/i.test(lines[lines.length - 1])) throw new Error('incompleto');
+  const data = { investments: [], moves: [] };
+  const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+  for (const line of lines.slice(1, -1)) {
+    const [name, type, platform, ticker, q, p, date, cur, curDate, note] = line.split(';').map((x) => (x || '').trim());
+    const units = Number(q), buy = Number(p), now = cur === '' ? null : Number(cur);
+    if (!name || !(units > 0) || !(buy >= 0) || !isDate(date) || (now != null && !(now >= 0)) || (curDate && !isDate(curDate))) throw new Error('línea');
+    const id = 'p-' + (ticker || name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    data.investments.push({
+      id, name, type: TYPES.some((t) => t.id === type) ? type : 'otros', mode: 'units', platform: platform || '', ticker: ticker || '',
+      notes: note || '', price: now, priceDate: curDate || null, value: null, valueDate: null, created: Date.now(),
+    });
+    data.moves.push({ id: id + '-compra', invId: id, kind: 'buy', date, units, price: buy, amount: units * buy, fee: 0, note: '', created: Date.now() });
+  }
+  if (!data.investments.length) throw new Error('vacío');
+  return data;
+}
+
 // Comprueba que un texto tiene el formato de la app
 function parseData(text, errorMsg) {
   try {
-    const data = JSON.parse(text);
+    const data = parseCompact(text) || JSON.parse(text);
     const ok = data && Array.isArray(data.investments) && Array.isArray(data.moves)
       && data.investments.every((i) => i && i.id && i.name && (i.mode === 'units' || i.mode === 'amount'))
       && data.moves.every((m) => m && m.id && m.invId && ['buy', 'sell', 'income'].includes(m.kind) && /^\d{4}-\d{2}-\d{2}$/.test(m.date) && typeof m.amount === 'number');
