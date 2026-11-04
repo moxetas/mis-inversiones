@@ -228,8 +228,10 @@ a.row:active, button.row:active { background: var(--surface-2); }
 
 /* ---------- Noticias ---------- */
 .news-chips button { display: inline-flex; align-items: center; gap: 6px; }
-.news-card { padding: 0; overflow: hidden; }
-.news { width: 100%; }
+.news-item { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
+.news-item .nt { font-weight: 600; font-size: 15px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.news-item .s { margin-top: 4px; }
+.news-ini { width: 36px; height: 36px; font-size: 13px; background: var(--surface-2); color: var(--muted); }
 .dot { width: 10px; height: 36px; border-radius: 4px; }
 .logo {
   position: relative; flex: none; display: grid; place-items: center;

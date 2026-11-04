@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '15';
+const APP_VERSION = '16';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -850,60 +850,113 @@ function drawChart() {
   svg.addEventListener('pointerleave', hide);
 }
 
-// ---------- Pantalla: Noticias (de TradingView) ----------
+// ---------- Pantalla: Noticias (en español, de TradingView) ----------
+// Una tarea de GitHub Actions descarga cada media hora las noticias en español de TradingView
+// (scripts/noticias.py) y las deja en la rama «noticias»; la app las lee de ahí.
 
-// Símbolo cuyas noticias se muestran para cada inversión (la empresa o el activo relacionado)
+const NEWS_URL = 'https://raw.githubusercontent.com/moxetas/mis-inversiones/noticias/noticias.json';
+// Sección de noticias de cada inversión (la empresa o el activo relacionado)
 const NEWS_BY_ISIN = {
   US0079031078: 'NASDAQ:AMD', US88160R1014: 'NASDAQ:TSLA', US0378331005: 'NASDAQ:AAPL',
   ES0144580Y14: 'BME:IBE', ES0140609019: 'BME:CABK',
-  IE00B6R52259: 'AMEX:ACWI',      // mismo índice que tu ETF (MSCI ACWI)
+  IE00B6R52259: 'SP:SPX',         // MSCI ACWI: noticias del S&P 500, su mayor parte
   IE00B43VDT70: 'TVC:SILVER',     // plata
   DE000A0S9GB0: 'TVC:GOLD',       // oro
   BTC: 'BITSTAMP:BTCUSD',
 };
-function newsFeeds() {
-  const feeds = [
-    { id: 'mercado', label: 'Bolsa', cfg: { feedMode: 'market', market: 'stock' } },
-    { id: 'cripto', label: 'Cripto', cfg: { feedMode: 'market', market: 'crypto' } },
-  ];
+let newsData = null, newsLoading = false;
+
+function newsTabs() {
+  const tabs = [{ id: 'mias', label: 'Mis activos' }, { id: 'bolsa', label: 'Bolsa' }, { id: 'cripto', label: 'Cripto' }];
   for (const inv of state.investments) {
     if (calc(inv).closed) continue;
-    const sym = NEWS_BY_ISIN[(inv.ticker || '').toUpperCase()] || (inv.tv || tvCandidates(inv)[0]);
-    if (sym && !feeds.some((f) => f.cfg.symbol === sym)) feeds.push({ id: inv.id, label: inv.name.replace(/\s*\(.*\)$/, ''), cfg: { feedMode: 'symbol', symbol: sym }, inv });
+    const key = NEWS_BY_ISIN[(inv.ticker || '').toUpperCase()];
+    if (key && !tabs.some((t) => t.key === key)) tabs.push({ id: inv.id, key, inv, label: inv.name.replace(/\s*\(.*\)$/, '') });
   }
-  return feeds;
+  return tabs;
+}
+
+function timeAgo(sec) {
+  const m = Math.round((Date.now() / 1000 - sec) / 60);
+  if (m < 1) return 'ahora';
+  if (m < 60) return 'hace ' + m + ' min';
+  const h = Math.round(m / 60);
+  if (h < 24) return 'hace ' + h + ' h';
+  const d = Math.round(h / 24);
+  if (d === 1) return 'ayer';
+  if (d < 7) return 'hace ' + d + ' días';
+  return new Date(sec * 1000).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+}
+
+async function loadNews(force) {
+  if (!newsData) { try { newsData = JSON.parse(localStorage.getItem('inv.newsCache')); } catch (e) { newsData = null; } }
+  const fresh = newsData && Date.now() / 1000 - newsData.fetched < 10 * 60;
+  if ((fresh && !force) || newsLoading || !navigator.onLine) return;
+  newsLoading = true;
+  try {
+    const res = await fetch(NEWS_URL + '?t=' + Math.floor(Date.now() / 300000), { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    newsData = Object.assign(await res.json(), { fetched: Date.now() / 1000 });
+    try { localStorage.setItem('inv.newsCache', JSON.stringify(newsData)); } catch (e) { /* sin almacenamiento */ }
+  } catch (e) {
+    if (!newsData) newsData = { error: true };
+  } finally {
+    newsLoading = false;
+    if (location.hash.startsWith('#/noticias')) renderNews();
+  }
 }
 
 function renderNews() {
   setChrome({ title: 'Noticias', tab: 'news' });
-  const feeds = newsFeeds();
-  let sel = 'mercado';
+  const tabs = newsTabs();
+  let sel = 'mias';
   try { sel = localStorage.getItem('inv.news') || sel; } catch (e) { /* sin almacenamiento */ }
-  if (!feeds.some((f) => f.id === sel)) sel = 'mercado';
-  const f = feeds.find((x) => x.id === sel);
+  if (!tabs.some((t) => t.id === sel)) sel = 'mias';
+  const tab = tabs.find((t) => t.id === sel);
+  if (!newsData || (!newsData.error && Date.now() / 1000 - (newsData.fetched || 0) > 10 * 60)) loadNews();
+
+  let items = [], body;
+  if (newsData && newsData.feeds) {
+    const feeds = newsData.feeds;
+    if (sel === 'mias') {
+      // Todas las de tus activos juntas, sin repetir, de la más nueva a la más vieja
+      const seen = new Set();
+      for (const t of tabs.filter((x) => x.key)) for (const it of feeds[t.key] || []) {
+        if (!seen.has(it.id)) { seen.add(it.id); items.push(Object.assign({ inv: t.inv }, it)); }
+      }
+      items.sort((x, y) => y.published - x.published);
+      items = items.slice(0, 60);
+    } else {
+      items = (feeds[tab.key || tab.id] || []).map((it) => Object.assign({ inv: tab.inv }, it));
+    }
+    body = items.length ? items.map((it) => `
+      <a class="row news-item" href="${esc(it.url || '#')}" target="_blank" rel="noopener">
+        ${it.inv ? logoHtml(it.inv, 36) : '<span class="logo ini news-ini" aria-hidden="true">' + esc((it.source || '?').slice(0, 2)) + '</span>'}
+        <span class="main"><div class="nt">${esc(it.title)}</div><div class="s">${esc(it.source)} · ${esc(timeAgo(it.published))}</div></span>
+      </a>`).join('') : '<div class="empty"><p>No hay noticias recientes en español de esta sección.</p></div>';
+  } else if (newsData && newsData.error) {
+    body = '<div class="empty"><p>No se han podido cargar las noticias. Comprueba la conexión y vuelve a probar.</p></div>';
+  } else if (!navigator.onLine) {
+    body = '<div class="empty"><p>Sin conexión. Las noticias aparecerán cuando vuelvas a tener internet.</p></div>';
+  } else {
+    body = '<div class="empty"><p>Cargando noticias…</p></div>';
+  }
+
   view.innerHTML = `
     <div class="chips news-chips" role="group" aria-label="Noticias de">
-      ${feeds.map((x) => `<button type="button" data-f="${esc(x.id)}" aria-pressed="${x.id === sel}">${x.inv ? logoHtml(x.inv, 20) : ''}<span>${esc(x.label)}</span></button>`).join('')}
+      ${tabs.map((t) => `<button type="button" data-f="${esc(t.id)}" aria-pressed="${t.id === sel}">${t.inv ? logoHtml(t.inv, 20) : ''}<span>${esc(t.label)}</span></button>`).join('')}
     </div>
-    <div class="card news-card"><div class="news" id="news"></div></div>
-    <p class="note">Noticias en directo de TradingView. Toca una para leerla entera.</p>`;
+    ${tab.key === 'SP:SPX' ? '<p class="note">Del ETF MSCI ACWI no hay noticias propias en español: te enseño las del S&amp;P 500, que es su mayor parte.</p>' : ''}
+    <div class="list">${body}</div>
+    <p class="note">Noticias en español de TradingView${newsData && newsData.updated ? ', actualizadas ' + esc(timeAgo(newsData.updated)) : ''}. Toca una para leerla entera.</p>
+    ${newsData && newsData.feeds ? '<button class="btn secondary" type="button" id="news-reload">Buscar noticias nuevas</button>' : ''}`;
   for (const b of view.querySelectorAll('.news-chips button')) {
     b.addEventListener('click', () => { try { localStorage.setItem('inv.news', b.dataset.f); } catch (e) { /* nada */ } renderNews(); });
   }
+  const rl = $('#news-reload');
+  if (rl) rl.addEventListener('click', () => { rl.disabled = true; rl.textContent = 'Buscando…'; if (newsData) newsData.error = false; loadNews(true); });
   const on = view.querySelector('.news-chips [aria-pressed="true"]');
   if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' });
-  const box = $('#news');
-  if (!navigator.onLine) { box.innerHTML = '<div class="empty"><p>Sin conexión. Las noticias aparecerán cuando vuelvas a tener internet.</p></div>'; return; }
-  const dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
-  const h = Math.max(420, window.innerHeight - box.getBoundingClientRect().top - 150);
-  box.style.height = h + 'px';
-  box.innerHTML = '<div class="tradingview-widget-container" style="height:100%"><div class="tradingview-widget-container__widget" style="height:100%"></div></div>';
-  const sc = document.createElement('script');
-  sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-timeline.js';
-  sc.async = true;
-  sc.text = JSON.stringify(Object.assign({ isTransparent: true, displayMode: 'regular', width: '100%', height: '100%', colorTheme: dark ? 'dark' : 'light', locale: 'es' }, f.cfg));
-  sc.onerror = () => { box.innerHTML = '<div class="empty"><p>No se han podido cargar las noticias de TradingView. Prueba otra vez en un rato.</p></div>'; };
-  box.firstChild.appendChild(sc);
 }
 
 // ---------- Pantalla: Ajustes ----------
