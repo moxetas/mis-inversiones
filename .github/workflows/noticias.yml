@@ -1,10 +1,10 @@
-# Descarga cada media hora las noticias en español de TradingView para la pestaña Noticias de la app.
+# Descarga cada hora noticias gratuitas en español (de Google Noticias) para la pestaña Noticias de la app.
 # Las publica en la rama «noticias» (un solo commit que se sobrescribe), así no llena de commits la rama main.
 name: Noticias
 
 on:
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '7 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,7 @@ concurrency:
 jobs:
   noticias:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 

@@ -11,7 +11,7 @@ Tus datos se guardan **solo en tu teléfono**: no se suben a ningún sitio.
 | Resumen | Valor total de la cartera, ganancia o pérdida en euros y en %, dinero aportado y retirado, dividendos cobrados, reparto por tipo y por plataforma. |
 | Inversiones | Lista de inversiones con su valor y rentabilidad. Al tocar una se ven participaciones, precio medio de compra, ganancia sin vender y ya vendida, y sus movimientos. |
 | Movimientos | Gráfica de la evolución del patrimonio (valor frente a dinero puesto) y todas las compras, ventas y dividendos por meses, con totales por año. |
-| Noticias | Noticias gratuitas en español (de Google Noticias, sin webs de pago): de la bolsa, de cripto y de cada uno de tus activos. Una tarea de GitHub Actions (`.github/workflows/noticias.yml`, que ejecuta `scripts/noticias.py`) las descarga cada media hora en la rama `noticias`. |
+| Noticias | Noticias gratuitas en español (de Google Noticias, sin webs de pago): de la bolsa, de cripto y de cada uno de tus activos (la app los reconoce solos entre unos 90 activos habituales: Ibex 35, grandes de EE. UU. y Europa, cripto, oro, plata e índices). Una tarea de GitHub Actions (`.github/workflows/noticias.yml`, que ejecuta `scripts/noticias.py`) las descarga cada hora en la rama `noticias`. |
 | Ajustes | Moneda, copia de seguridad (guardar y recuperar), exportar a Excel (CSV) y borrar todo. |
 
 - Cada inversión se apunta de una de dos formas: **por participaciones** (acciones, ETF, fondos, cripto, planes de pensiones: cantidad × precio) o **solo por importe** (depósitos, cuentas, inmuebles: euros aportados y valor actual).

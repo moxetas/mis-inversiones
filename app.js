@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '17';
+const APP_VERSION = '18';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -851,29 +851,56 @@ function drawChart() {
 }
 
 // ---------- Pantalla: Noticias (gratuitas, en español) ----------
-// Una tarea de GitHub Actions busca cada media hora en Google Noticias las noticias en español de tus activos,
-// quita las webs de pago (scripts/noticias.py) y las deja en la rama «noticias»; la app las lee de ahí.
+// Una tarea de GitHub Actions busca cada hora en Google Noticias las noticias en español de unos 90 activos
+// habituales, quita las webs de pago (scripts/noticias.py) y las deja en la rama «noticias»; la app las lee de ahí.
+// Junto a las noticias viene un catálogo para reconocer cada activo por ISIN, ticker o nombre: así, si compras
+// uno nuevo de la lista, sus noticias salen solas.
 
 const NEWS_URL = 'https://raw.githubusercontent.com/moxetas/mis-inversiones/noticias/noticias.json';
-// Sección de noticias de cada inversión (la empresa o el activo relacionado)
-const NEWS_BY_ISIN = {
-  US0079031078: 'NASDAQ:AMD', US88160R1014: 'NASDAQ:TSLA', US0378331005: 'NASDAQ:AAPL',
-  ES0144580Y14: 'BME:IBE', ES0140609019: 'BME:CABK',
-  IE00B6R52259: 'MSCI',           // MSCI ACWI: noticias de la bolsa mundial y los índices MSCI
-  IE00B43VDT70: 'TVC:SILVER',     // plata
-  DE000A0S9GB0: 'TVC:GOLD',       // oro
-  BTC: 'BITSTAMP:BTCUSD',
-};
 let newsData = null, newsLoading = false;
 
+function normName(x) {
+  return ' ' + String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9&]+/g, ' ').trim() + ' ';
+}
+// Busca en el catálogo de noticias el activo de una inversión: primero por ISIN, luego por ticker y por último por nombre
+function newsEntry(inv) {
+  const cat = (newsData && newsData.catalog) || [];
+  const isin = (inv.ticker || '').toUpperCase().trim();
+  const ticks = [isin, (inv.priceSource || '').split(':').pop(), (inv.tv || '').split(':').pop()].map((t) => (t || '').toUpperCase()).filter(Boolean);
+  const name = normName(inv.name);
+  return cat.find((c) => c.match.isin.includes(isin))
+    || cat.find((c) => c.match.tickers.some((t) => ticks.includes(t.toUpperCase())))
+    || cat.filter((c) => c.match.names.some((n) => name.includes(normName(n))))
+          .sort((x, y) => Math.max(...y.match.names.map((n) => n.length)) - Math.max(...x.match.names.map((n) => n.length)))[0];
+}
+// Palabra para buscar menciones de un activo que no está en el catálogo
+const GENERIC = new Set(['fondo', 'fondos', 'etf', 'etc', 'ishares', 'vanguard', 'amundi', 'xtrackers', 'invesco', 'acciones', 'deposito', 'cuenta', 'plan', 'sa', 'inc', 'the']);
+function mentionWord(inv) {
+  return normName(inv.name).trim().split(' ').find((w) => w.length >= 4 && !GENERIC.has(w));
+}
+
 function newsTabs() {
-  const tabs = [{ id: 'mias', label: 'Mis activos' }, { id: 'bolsa', label: 'Bolsa' }, { id: 'cripto', label: 'Cripto' }];
+  const tabs = [{ id: 'mias', label: 'Mis activos' }, { id: 'bolsa', key: 'bolsa', label: 'Bolsa' }, { id: 'cripto', key: 'cripto', label: 'Cripto' }];
+  if (!newsData || !newsData.catalog) return tabs;
   for (const inv of state.investments) {
     if (calc(inv).closed) continue;
-    const key = NEWS_BY_ISIN[(inv.ticker || '').toUpperCase()];
-    if (key && !tabs.some((t) => t.key === key)) tabs.push({ id: inv.id, key, inv, label: inv.name.replace(/\s*\(.*\)$/, '') });
+    const e = newsEntry(inv);
+    const label = inv.name.replace(/\s*\(.*\)$/, '');
+    if (e) { if (!tabs.some((t) => t.key === e.key)) tabs.push({ id: inv.id, key: e.key, inv, label }); }
+    else if (mentionWord(inv)) tabs.push({ id: inv.id, mention: mentionWord(inv), inv, label });   // fuera del catálogo: menciones
   }
   return tabs;
+}
+// Noticias de una pestaña: las de su sección o, si el activo no está en el catálogo, las que lo nombran
+function tabItems(t) {
+  const feeds = newsData.feeds;
+  if (t.key) return (feeds[t.key] || []).map((it) => Object.assign({ inv: t.inv }, it));
+  const re = new RegExp('\\b' + t.mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+  const seen = new Set(), out = [];
+  for (const list of Object.values(feeds)) for (const it of list) {
+    if (!seen.has(it.id) && re.test(normName(it.title))) { seen.add(it.id); out.push(Object.assign({ inv: t.inv }, it)); }
+  }
+  return out.sort((x, y) => y.published - x.published);
 }
 
 function timeAgo(sec) {
@@ -917,17 +944,16 @@ function renderNews() {
 
   let items = [], body;
   if (newsData && newsData.feeds) {
-    const feeds = newsData.feeds;
     if (sel === 'mias') {
       // Todas las de tus activos juntas, sin repetir, de la más nueva a la más vieja
       const seen = new Set();
-      for (const t of tabs.filter((x) => x.key)) for (const it of feeds[t.key] || []) {
-        if (!seen.has(it.id)) { seen.add(it.id); items.push(Object.assign({ inv: t.inv }, it)); }
+      for (const t of tabs.filter((x) => x.inv)) for (const it of tabItems(t)) {
+        if (!seen.has(it.id)) { seen.add(it.id); items.push(it); }
       }
       items.sort((x, y) => y.published - x.published);
-      items = items.slice(0, 60);
+      items = items.slice(0, 80);
     } else {
-      items = (feeds[tab.key || tab.id] || []).map((it) => Object.assign({ inv: tab.inv }, it));
+      items = tabItems(tab);
     }
     body = items.length ? items.map((it) => `
       <a class="row news-item" href="${esc(it.url || '#')}" target="_blank" rel="noopener">
@@ -947,6 +973,7 @@ function renderNews() {
       ${tabs.map((t) => `<button type="button" data-f="${esc(t.id)}" aria-pressed="${t.id === sel}">${t.inv ? logoHtml(t.inv, 20) : ''}<span>${esc(t.label)}</span></button>`).join('')}
     </div>
     ${tab.key === 'MSCI' ? '<p class="note">Noticias de la bolsa mundial y de los índices MSCI, que es lo que sigue tu ETF.</p>' : ''}
+    ${tab.mention ? `<p class="note">Este activo no está en la lista de noticias, así que te enseño las que lo nombran. Si quieres noticias propias, pídeselo a Claude.</p>` : ''}
     <div class="list">${body}</div>
     <p class="note">Noticias gratuitas en español de webs de economía, reunidas por Google Noticias${newsData && newsData.updated ? ' (actualizadas ' + esc(timeAgo(newsData.updated)) + ')' : ''}. Se quitan las webs de pago. Toca una para leerla entera en su web.</p>
     ${newsData && newsData.feeds ? '<button class="btn secondary" type="button" id="news-reload">Buscar noticias nuevas</button>' : ''}`;
