@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '16';
+const APP_VERSION = '17';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -850,16 +850,16 @@ function drawChart() {
   svg.addEventListener('pointerleave', hide);
 }
 
-// ---------- Pantalla: Noticias (en español, de TradingView) ----------
-// Una tarea de GitHub Actions descarga cada media hora las noticias en español de TradingView
-// (scripts/noticias.py) y las deja en la rama «noticias»; la app las lee de ahí.
+// ---------- Pantalla: Noticias (gratuitas, en español) ----------
+// Una tarea de GitHub Actions busca cada media hora en Google Noticias las noticias en español de tus activos,
+// quita las webs de pago (scripts/noticias.py) y las deja en la rama «noticias»; la app las lee de ahí.
 
 const NEWS_URL = 'https://raw.githubusercontent.com/moxetas/mis-inversiones/noticias/noticias.json';
 // Sección de noticias de cada inversión (la empresa o el activo relacionado)
 const NEWS_BY_ISIN = {
   US0079031078: 'NASDAQ:AMD', US88160R1014: 'NASDAQ:TSLA', US0378331005: 'NASDAQ:AAPL',
   ES0144580Y14: 'BME:IBE', ES0140609019: 'BME:CABK',
-  IE00B6R52259: 'SP:SPX',         // MSCI ACWI: noticias del S&P 500, su mayor parte
+  IE00B6R52259: 'MSCI',           // MSCI ACWI: noticias de la bolsa mundial y los índices MSCI
   IE00B43VDT70: 'TVC:SILVER',     // plata
   DE000A0S9GB0: 'TVC:GOLD',       // oro
   BTC: 'BITSTAMP:BTCUSD',
@@ -946,9 +946,9 @@ function renderNews() {
     <div class="chips news-chips" role="group" aria-label="Noticias de">
       ${tabs.map((t) => `<button type="button" data-f="${esc(t.id)}" aria-pressed="${t.id === sel}">${t.inv ? logoHtml(t.inv, 20) : ''}<span>${esc(t.label)}</span></button>`).join('')}
     </div>
-    ${tab.key === 'SP:SPX' ? '<p class="note">Del ETF MSCI ACWI no hay noticias propias en español: te enseño las del S&amp;P 500, que es su mayor parte.</p>' : ''}
+    ${tab.key === 'MSCI' ? '<p class="note">Noticias de la bolsa mundial y de los índices MSCI, que es lo que sigue tu ETF.</p>' : ''}
     <div class="list">${body}</div>
-    <p class="note">Noticias en español de TradingView${newsData && newsData.updated ? ', actualizadas ' + esc(timeAgo(newsData.updated)) : ''}. Toca una para leerla entera.</p>
+    <p class="note">Noticias gratuitas en español de webs de economía, reunidas por Google Noticias${newsData && newsData.updated ? ' (actualizadas ' + esc(timeAgo(newsData.updated)) + ')' : ''}. Se quitan las webs de pago. Toca una para leerla entera en su web.</p>
     ${newsData && newsData.feeds ? '<button class="btn secondary" type="button" id="news-reload">Buscar noticias nuevas</button>' : ''}`;
   for (const b of view.querySelectorAll('.news-chips button')) {
     b.addEventListener('click', () => { try { localStorage.setItem('inv.news', b.dataset.f); } catch (e) { /* nada */ } renderNews(); });

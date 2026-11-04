@@ -9,24 +9,43 @@ import email.utils, html, json, re, sys, time, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
 GOOGLE = 'https://news.google.com/rss/search'
-# (clave que usa la app, búsqueda en Google Noticias). when:Nd = solo de los últimos N días.
+# (clave que usa la app, búsqueda en Google Noticias, palabras que deben salir en el titular).
+# when:Nd = solo de los últimos N días.
+MERCADO = '(acciones OR bolsa OR beneficio OR resultados OR dividendo OR cotización OR analistas)'
 FEEDS = [
-    ('bolsa', 'Ibex 35 OR "Wall Street" OR "bolsa española" when:2d'),
-    ('cripto', 'bitcoin OR criptomonedas OR ethereum when:2d'),
-    ('NASDAQ:AMD', 'AMD acciones when:7d'),
-    ('NASDAQ:TSLA', 'Tesla acciones when:7d'),
-    ('NASDAQ:AAPL', 'Apple acciones when:7d'),
-    ('BME:IBE', 'Iberdrola when:7d'),
-    ('BME:CABK', 'CaixaBank when:7d'),
-    ('MSCI', '"MSCI World" OR "MSCI ACWI" OR "bolsa mundial" OR "renta variable global" when:7d'),
-    ('TVC:SILVER', '"precio de la plata" when:7d'),
-    ('TVC:GOLD', '"precio del oro" when:7d'),
-    ('BITSTAMP:BTCUSD', 'bitcoin precio when:3d'),
+    ('bolsa', 'Ibex 35 OR "Wall Street" OR "bolsa española" OR "bolsas europeas" when:2d', []),
+    ('cripto', 'bitcoin OR criptomonedas OR ethereum when:2d', []),
+    ('NASDAQ:AMD', f'AMD {MERCADO} when:7d', ['amd']),
+    ('NASDAQ:TSLA', f'Tesla {MERCADO} when:7d', ['tesla']),
+    ('NASDAQ:AAPL', f'Apple {MERCADO} when:7d', ['apple']),
+    ('BME:IBE', f'Iberdrola {MERCADO} when:7d', ['iberdrola']),
+    ('BME:CABK', f'CaixaBank {MERCADO} when:7d', ['caixabank']),
+    ('MSCI', '"MSCI World" OR "MSCI ACWI" OR "bolsa mundial" OR "renta variable global" OR "fondos indexados" when:7d', []),
+    ('TVC:SILVER', '"precio de la plata" OR "la plata" metales -"Onza Libertad" when:7d', ['plata']),
+    ('TVC:GOLD', '"precio del oro" OR "el oro" onza when:7d', ['oro']),
+    ('BITSTAMP:BTCUSD', 'bitcoin precio when:3d', ['bitcoin', 'btc']),
 ]
 # Webs con muro de pago (no se podrían leer enteras sin suscripción)
 DE_PAGO = {'expansión', 'expansion', 'cinco días', 'cincodías', 'cincodias', 'el país', 'el pais', 'el mundo', 'abc',
            'la vanguardia', 'the wall street journal', 'wall street journal', 'financial times', 'bloomberg',
-           'el correo', 'diario vasco', 'la voz de galicia', 'el diario montañés', 'heraldo de aragón'}
+           'el correo', 'diario vasco', 'la voz de galicia', 'el diario montañés', 'heraldo de aragón',
+           'marketscreener españa', 'marketscreener', 'reforma', 'larepublica.co', 'la república', 'el tiempo'}
+# Webs que no son de economía en español o que salen en otros idiomas
+OTRAS = {'vietnam.vn', 'www.tmgm.com', 'idnfinancials', 'quartz', 'yahoo', 'msn'}
+# Palabras para comprobar que el titular está en español y no en inglés
+ES = set('de la el los las en y que del por con para se su sus al un una tras sube suben cae caen bolsa acciones precio '
+         'millones récord qué cómo más hoy frente entre sobre ante desde hasta es ya no lo como pero dólares euros año '
+         'mercado mercados nuevo nueva gana pierde beneficio resultados analistas cotización hasta máximos mínimos'.split())
+EN = set('the and of to in for on with as after its is are stock stocks shares price rises falls soars new from by at '
+         'why what how will earnings jumps slides surges beats misses'.split())
+OTRO_ALFABETO = re.compile('[\u0600-\u06FF\u0400-\u04FF\u0E00-\u0E7F\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF'
+                           'ăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]', re.I)
+
+def en_espanol(t):
+    if OTRO_ALFABETO.search(t): return False
+    w = re.findall(r'[a-záéíóúñü]+', t.lower())
+    es, en = sum(x in ES for x in w), sum(x in EN for x in w)
+    return es >= 1 and es >= en
 PER_FEED = 30
 MAX_DAYS = 10
 
@@ -36,7 +55,7 @@ def fetch(q):
     with urllib.request.urlopen(req, timeout=30) as r:
         return ET.fromstring(r.read())
 
-def items(root):
+def items(root, must):
     out, seen = [], set()
     for it in root.iter('item'):
         title = (it.findtext('title') or '').strip()
@@ -49,7 +68,9 @@ def items(root):
         except Exception:
             continue
         key = re.sub(r'\W+', ' ', title.lower()).strip()
-        if not title or key in seen or source.lower() in DE_PAGO:
+        if not title or key in seen or source.lower() in DE_PAGO or source.lower() in OTRAS:
+            continue
+        if not en_espanol(title) or (must and not any(m in title.lower() for m in must)):
             continue
         if time.time() - published > MAX_DAYS * 86400:
             continue
@@ -60,9 +81,9 @@ def items(root):
 
 def main(out):
     feeds, errors = {}, []
-    for key, q in FEEDS:
+    for key, q, must in FEEDS:
         try:
-            feeds[key] = items(fetch(q))
+            feeds[key] = items(fetch(q), must)
             srcs = {}
             for x in feeds[key]: srcs[x['source']] = srcs.get(x['source'], 0) + 1
             top = ', '.join(f'{s} ({n})' for s, n in sorted(srcs.items(), key=lambda kv: -kv[1])[:5])
