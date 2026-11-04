@@ -22,7 +22,7 @@ FEEDS = [
     ('BME:CABK', f'CaixaBank {MERCADO} when:7d', ['caixabank']),
     ('MSCI', '"MSCI World" OR "MSCI ACWI" OR "bolsa mundial" OR "renta variable global" OR "fondos indexados" when:7d', []),
     ('TVC:SILVER', '"precio de la plata" OR "la plata" metales -"Onza Libertad" when:7d', ['plata']),
-    ('TVC:GOLD', '"precio del oro" OR "el oro" onza when:7d', ['oro']),
+    ('TVC:GOLD', '"precio del oro" OR "el oro" OR "oro sube" OR "oro cae" OR "onza de oro" when:7d', ['oro']),
     ('BITSTAMP:BTCUSD', 'bitcoin precio when:3d', ['bitcoin', 'btc']),
 ]
 # Webs con muro de pago (no se podrían leer enteras sin suscripción)
