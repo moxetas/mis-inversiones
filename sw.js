@@ -1,6 +1,6 @@
 // Guarda la app en el teléfono para que abra aunque no haya cobertura.
 // Cambia el número de CACHE cada vez que se publique una versión nueva.
-const CACHE = 'inversiones-v14';
+const CACHE = 'inversiones-v15';
 const FILES = [
   './',
   'index.html',

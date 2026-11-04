@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '14';
+const APP_VERSION = '15';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -182,6 +182,19 @@ function curSymbol(cur) {
   catch (e) { return cur; }
 }
 
+// Guarda cada día el valor total de la cartera para dibujar su evolución
+function recordSnapshot() {
+  if (!state.investments.length) return;
+  const { tot, missing } = portfolio();
+  if (missing.length || !(tot.value > 0)) return;    // sin todos los cambios de moneda el total no sería real
+  state.history = state.history || {};
+  const k = todayKey(), v = Math.round(tot.value * 100) / 100, c = Math.round((tot.contributed - tot.withdrawn) * 100) / 100;
+  const old = state.history[k];
+  if (old && old.v === v && old.c === c) return;
+  state.history[k] = { v, c };
+  saveState();
+}
+
 function lastUpdate(inv) { return inv.mode === 'units' ? inv.priceDate : inv.valueDate; }
 
 // ---------- Interfaz común ----------
@@ -304,13 +317,16 @@ function renderHome() {
 function invRow({ inv, c }) {
   const cur = invCur(inv), m = (x) => money(x, cur);
   const sub = [typeOf(inv.type).name, inv.platform].filter(Boolean).join(' · ');
+  // Abiertas: lo que ganas o pierdes sin haber vendido. Cerradas: lo que ganaste en total.
+  const g = c.closed ? c.gain : c.unrealized, base = c.closed ? c.contributed : c.cost;
+  const gl = base > 0 ? signed(g, m) + ' · ' + signed(g / base, pct) : '';
   return `
     <a class="row" href="#/inv/${inv.id}">
       ${logoHtml(inv, 40)}
       <span class="main"><div class="t">${esc(inv.name)}</div><div class="s">${esc(sub)}</div></span>
       <span class="end">
         <div class="num">${m(c.value)}</div>
-        <div class="s num ${cls(c.gain)}">${c.contributed > 0 ? signed(c.gain, m) + ' · ' + signed(c.pct, pct) : ''}</div>
+        <div class="s num gl ${cls(g)}">${gl}</div>
       </span>
     </a>`;
 }
@@ -327,7 +343,14 @@ function renderList() {
   const bv = (r) => (r.b ? r.b.value : 0);
   const open = rows.filter((r) => !r.c.closed).sort((a, b) => bv(b) - bv(a));
   const closed = rows.filter((r) => r.c.closed).sort((a, b) => a.inv.name.localeCompare(b.inv.name, 'es'));
+  // Total sin vender, en la moneda principal
+  let un = 0, cost = 0;
+  for (const r of open) { const u = toBase(r.c.unrealized, r.cur), k = toBase(r.c.cost, r.cur); if (u != null && k != null) { un += u; cost += k; } }
   view.innerHTML = `
+    ${open.length ? `<section class="card unreal">
+      <div><div class="k">Ganancia o pérdida sin vender</div><div class="v num ${cls(un)}">${arrow(un)}${signed(un)}</div></div>
+      <div class="num pct-big ${cls(un)}">${cost > 0 ? signed(un / cost, pct) : ''}</div>
+    </section>` : ''}
     ${open.length ? `<div class="list">${open.map(invRow).join('')}</div>` : ''}
     ${closed.length ? `<h2 class="section-title">Cerradas (ya vendidas o retiradas)</h2><div class="list">${closed.map(invRow).join('')}</div>` : ''}
     <div style="margin-bottom:12px">${priceButton()}</div>
@@ -678,6 +701,7 @@ function renderMoves() {
   if (open) html += '</div>';
 
   view.innerHTML = `
+    ${chartCard()}
     <div class="chips" role="group" aria-label="Año">
       <button type="button" data-y="all" aria-pressed="${moveYear === 'all'}">Todos</button>
       ${years.map((y) => `<button type="button" data-y="${y}" aria-pressed="${moveYear === y}">${y}</button>`).join('')}
@@ -691,9 +715,195 @@ function renderMoves() {
       </div>
     </section>
     ${html}`;
-  for (const b of view.querySelectorAll('.chips button')) {
+  for (const b of view.querySelectorAll('.chips[aria-label="Año"] button')) {
     b.addEventListener('click', () => { moveYear = b.dataset.y; renderMoves(); });
   }
+  for (const b of view.querySelectorAll('.chips[aria-label="Periodo"] button')) {
+    b.addEventListener('click', () => { chartPeriod = b.dataset.p; renderMoves(); });
+  }
+  drawChart();
+}
+
+// ---------- Gráfica: evolución del patrimonio ----------
+
+let chartPeriod = '1M';
+const PERIODS = { '1M': 31, '3M': 92, '1A': 366, 'Todo': null };
+const DAY = 86400000;
+function keyMs(k) { return fromKey(k).getTime(); }
+
+// Lo aportado (compras menos ventas) acumulado por fecha, en la moneda principal
+function contributionSteps() {
+  const steps = [];
+  let acc = 0;
+  for (const m of state.moves.slice().sort(byDate)) {
+    if (m.kind === 'income') continue;
+    const v = toBase(m.kind === 'buy' ? m.amount + (m.fee || 0) : -(m.amount - (m.fee || 0)), invCur(invById(m.invId)));
+    if (v == null) continue;
+    acc += v;
+    if (steps.length && steps[steps.length - 1].d === m.date) steps[steps.length - 1].c = acc;
+    else steps.push({ d: m.date, c: acc });
+  }
+  return steps;
+}
+
+function chartData() {
+  const hist = Object.entries(state.history || {}).map(([d, x]) => ({ d, t: keyMs(d), v: x.v, c: x.c })).sort((a, b) => a.t - b.t);
+  const steps = contributionSteps().map((x) => ({ ...x, t: keyMs(x.d) }));
+  const end = keyMs(todayKey());
+  const days = PERIODS[chartPeriod];
+  const first = Math.min(...[...hist, ...steps].map((x) => x.t), end);
+  const start = days ? Math.max(end - days * DAY, Math.min(first, end - 7 * DAY)) : Math.min(first, end - 7 * DAY);
+  const vals = hist.filter((x) => x.t >= start);
+  // Aportado: valor al empezar el periodo y cada cambio dentro
+  const cAt = (t) => { let c = 0; for (const s of steps) { if (s.t <= t) c = s.c; else break; } return c; };
+  const contrib = [{ t: start, c: cAt(start) }, ...steps.filter((s) => s.t > start).map((s) => ({ t: s.t, c: s.c })), { t: end, c: cAt(end) }];
+  return { vals, contrib, start, end, cAt };
+}
+
+function chartCard() {
+  const { vals, start } = chartData();
+  const { tot } = portfolio();
+  const last = vals[vals.length - 1], firstV = vals[0];
+  let head;
+  if (vals.length >= 2) {
+    // Lo que has ganado o perdido en el periodo, sin contar el dinero nuevo que hayas metido
+    const d = (last.v - (last.c || 0)) - (firstV.v - (firstV.c || 0));
+    head = `<div class="delta num ${cls(d)}">${arrow(d)}${signed(d)} (${signed(firstV.v > 0 ? d / firstV.v : 0, pct)}) desde el ${fmtDate(firstV.d)}</div>`;
+  } else {
+    const g = tot.gain;
+    head = `<div class="delta num ${cls(g)}">${arrow(g)}${signed(g)} sobre lo que has puesto</div>`;
+  }
+  return `
+    <section class="card chart-card">
+      <h2>Evolución de tu patrimonio</h2>
+      <div class="big num">${money(tot.value)}</div>
+      ${head}
+      <div class="chips" role="group" aria-label="Periodo">
+        ${Object.keys(PERIODS).map((k) => `<button type="button" data-p="${k}" aria-pressed="${chartPeriod === k}">${k}</button>`).join('')}
+      </div>
+      <div class="legend-row" aria-hidden="true"><span><i class="ln v"></i>Valor</span><span><i class="ln c"></i>Dinero puesto</span></div>
+      <div class="chart" id="chart"><svg role="img" aria-label="Evolución del valor de la cartera y del dinero puesto"></svg><div class="tip" id="chart-tip" hidden></div></div>
+      ${vals.length < 2 ? '<p class="note" style="margin:8px 0 0">La línea del valor se irá dibujando: la app guarda el valor de tu cartera cada día que la abres.</p>' : ''}
+    </section>`;
+}
+
+function drawChart() {
+  const box = $('#chart');
+  if (!box) return;
+  const svg = box.querySelector('svg');
+  const W = Math.max(260, box.clientWidth), H = 190, L = 4, R = 54, T = 10, B = 24;
+  const { vals, contrib, start, end, cAt } = chartData();
+  const ys = [...vals.map((x) => x.v), ...contrib.map((x) => x.c)];
+  if (!ys.length) { svg.setAttribute('viewBox', `0 0 ${W} ${H}`); return; }
+  let lo = Math.min(...ys), hi = Math.max(...ys);
+  const padY = (hi - lo) * 0.12 || hi * 0.05 || 1; lo -= padY; hi += padY;
+  const X = (t) => L + (t - start) / (end - start || 1) * (W - L - R);
+  const Y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
+  const compact = (v) => nf({ style: 'currency', currency: state.currency, notation: 'compact', maximumFractionDigits: 1 }).format(v);
+  const fmtX = (t) => new Date(t).toLocaleDateString('es-ES', end - start > 400 * DAY ? { month: 'short', year: '2-digit' } : { day: 'numeric', month: 'short' });
+  let g = '';
+  // Rejilla y eje Y a la derecha (recesivos)
+  for (let i = 0; i <= 3; i++) {
+    const v = lo + (hi - lo) * (i / 3), y = Y(v);
+    g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="grid"/><text x="${W - R + 6}" y="${y + 4}" class="axis">${esc(compact(v))}</text>`;
+  }
+  for (const t of [start, (start + end) / 2, end]) {
+    const x = X(t), anchor = t === start ? 'start' : t === end ? 'end' : 'middle';
+    g += `<text x="${Math.min(x, W - R)}" y="${H - 6}" class="axis" text-anchor="${anchor}">${esc(fmtX(t))}</text>`;
+  }
+  // Dinero puesto: escalones discontinuos
+  let dc = '';
+  contrib.forEach((p, i) => { dc += (i ? ` H${X(p.t)} V${Y(p.c)}` : `M${X(p.t)} ${Y(p.c)}`); });
+  g += `<path d="${dc}" class="contrib"/>`;
+  // Valor: línea con área suave
+  if (vals.length >= 2) {
+    const pts = vals.map((p) => `${X(p.t)},${Y(p.v)}`);
+    g += `<path d="M${pts.join(' L')} L${X(vals[vals.length - 1].t)},${H - B} L${X(vals[0].t)},${H - B} Z" class="area"/>`;
+    g += `<path d="M${pts.join(' L')}" class="value"/>`;
+  }
+  if (vals.length) { const p = vals[vals.length - 1]; g += `<circle cx="${X(p.t)}" cy="${Y(p.v)}" r="4.5" class="dot"/>`; }
+  g += `<line class="cross" id="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/><circle class="dot hover" id="hdot" r="4.5" visibility="hidden"/>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
+  svg.innerHTML = g;
+  // Al tocar o pasar el dedo: fecha, valor y dinero puesto
+  const tip = $('#chart-tip'), cross = svg.querySelector('#cross'), hdot = svg.querySelector('#hdot');
+  const show = (e) => {
+    const r = svg.getBoundingClientRect();
+    const t = start + Math.max(0, Math.min(1, (e.clientX - r.left - L) / (W - L - R))) * (end - start);
+    let near = null;
+    for (const p of vals) if (!near || Math.abs(p.t - t) < Math.abs(near.t - t)) near = p;
+    const tt = near && Math.abs(near.t - t) < (end - start) / 12 ? near.t : t;
+    const x = X(tt);
+    cross.setAttribute('x1', x); cross.setAttribute('x2', x); cross.setAttribute('visibility', 'visible');
+    if (near && tt === near.t) { hdot.setAttribute('cx', x); hdot.setAttribute('cy', Y(near.v)); hdot.setAttribute('visibility', 'visible'); }
+    else hdot.setAttribute('visibility', 'hidden');
+    tip.innerHTML = `<b>${esc(new Date(tt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }))}</b>`
+      + (near && tt === near.t ? `<div><i class="ln v"></i>Valor ${esc(money(near.v))}</div>` : '')
+      + `<div><i class="ln c"></i>Puesto ${esc(money(cAt(tt)))}</div>`;
+    tip.hidden = false;
+    tip.style.left = (x > (W - R) / 2 ? L : W - R - 150) + 'px';   // al lado contrario del dedo, para no tapar la línea
+  };
+  const hide = () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); hdot.setAttribute('visibility', 'hidden'); };
+  svg.addEventListener('pointerdown', show);
+  svg.addEventListener('pointermove', show);
+  svg.addEventListener('pointerleave', hide);
+}
+
+// ---------- Pantalla: Noticias (de TradingView) ----------
+
+// Símbolo cuyas noticias se muestran para cada inversión (la empresa o el activo relacionado)
+const NEWS_BY_ISIN = {
+  US0079031078: 'NASDAQ:AMD', US88160R1014: 'NASDAQ:TSLA', US0378331005: 'NASDAQ:AAPL',
+  ES0144580Y14: 'BME:IBE', ES0140609019: 'BME:CABK',
+  IE00B6R52259: 'AMEX:ACWI',      // mismo índice que tu ETF (MSCI ACWI)
+  IE00B43VDT70: 'TVC:SILVER',     // plata
+  DE000A0S9GB0: 'TVC:GOLD',       // oro
+  BTC: 'BITSTAMP:BTCUSD',
+};
+function newsFeeds() {
+  const feeds = [
+    { id: 'mercado', label: 'Bolsa', cfg: { feedMode: 'market', market: 'stock' } },
+    { id: 'cripto', label: 'Cripto', cfg: { feedMode: 'market', market: 'crypto' } },
+  ];
+  for (const inv of state.investments) {
+    if (calc(inv).closed) continue;
+    const sym = NEWS_BY_ISIN[(inv.ticker || '').toUpperCase()] || (inv.tv || tvCandidates(inv)[0]);
+    if (sym && !feeds.some((f) => f.cfg.symbol === sym)) feeds.push({ id: inv.id, label: inv.name.replace(/\s*\(.*\)$/, ''), cfg: { feedMode: 'symbol', symbol: sym }, inv });
+  }
+  return feeds;
+}
+
+function renderNews() {
+  setChrome({ title: 'Noticias', tab: 'news' });
+  const feeds = newsFeeds();
+  let sel = 'mercado';
+  try { sel = localStorage.getItem('inv.news') || sel; } catch (e) { /* sin almacenamiento */ }
+  if (!feeds.some((f) => f.id === sel)) sel = 'mercado';
+  const f = feeds.find((x) => x.id === sel);
+  view.innerHTML = `
+    <div class="chips news-chips" role="group" aria-label="Noticias de">
+      ${feeds.map((x) => `<button type="button" data-f="${esc(x.id)}" aria-pressed="${x.id === sel}">${x.inv ? logoHtml(x.inv, 20) : ''}<span>${esc(x.label)}</span></button>`).join('')}
+    </div>
+    <div class="card news-card"><div class="news" id="news"></div></div>
+    <p class="note">Noticias en directo de TradingView. Toca una para leerla entera.</p>`;
+  for (const b of view.querySelectorAll('.news-chips button')) {
+    b.addEventListener('click', () => { try { localStorage.setItem('inv.news', b.dataset.f); } catch (e) { /* nada */ } renderNews(); });
+  }
+  const on = view.querySelector('.news-chips [aria-pressed="true"]');
+  if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' });
+  const box = $('#news');
+  if (!navigator.onLine) { box.innerHTML = '<div class="empty"><p>Sin conexión. Las noticias aparecerán cuando vuelvas a tener internet.</p></div>'; return; }
+  const dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  const h = Math.max(420, window.innerHeight - box.getBoundingClientRect().top - 150);
+  box.style.height = h + 'px';
+  box.innerHTML = '<div class="tradingview-widget-container" style="height:100%"><div class="tradingview-widget-container__widget" style="height:100%"></div></div>';
+  const sc = document.createElement('script');
+  sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-timeline.js';
+  sc.async = true;
+  sc.text = JSON.stringify(Object.assign({ isTransparent: true, displayMode: 'regular', width: '100%', height: '100%', colorTheme: dark ? 'dark' : 'light', locale: 'es' }, f.cfg));
+  sc.onerror = () => { box.innerHTML = '<div class="empty"><p>No se han podido cargar las noticias de TradingView. Prueba otra vez en un rato.</p></div>'; };
+  box.firstChild.appendChild(sc);
 }
 
 // ---------- Pantalla: Ajustes ----------
@@ -869,19 +1079,21 @@ async function tvQuotes(tickers) {
   return { quotes: out, answered };
 }
 
-async function updatePrices(btn) {
+// quiet: al abrir la app se actualiza sola, sin avisos si algo falla
+async function updatePrices(btn, quiet) {
   const invs = state.investments.filter((i) => i.mode === 'units' && !calc(i).closed);
   const curs = otherCurrencies();
   const tickers = [...new Set([...invs.flatMap(tvCandidates), ...curs.flatMap(tvFxCandidates)])];
-  if (!tickers.length) { toast('No hay inversiones con símbolo de TradingView'); return; }
-  const label = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Pidiendo precios a TradingView…';
+  if (!tickers.length) { if (!quiet) toast('No hay inversiones con símbolo de TradingView'); return; }
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Pidiendo precios a TradingView…'; }
   try {
     const { quotes, answered } = await tvQuotes(tickers);
     if (!answered) {
-      alert('TradingView no ha respondido. Puede que no deje a la app pedir precios desde el iPhone, o que no haya conexión. Comprueba la conexión y vuelve a probar; si sigue igual, cuéntaselo a Claude.');
+      if (!quiet) alert('TradingView no ha respondido. Comprueba la conexión y vuelve a probar.');
       return;
     }
+    state.lastPriceUpdate = Date.now();
     const today = todayKey(), done = [], missing = [];
     for (const inv of invs) {
       const sym = tvCandidates(inv).find((t) => quotes[t] && (!quotes[t].currency || quotes[t].currency === invCur(inv)));
@@ -895,11 +1107,18 @@ async function updatePrices(btn) {
     }
     saveState();
     render();
-    if (missing.length) alert('Precios actualizados: ' + done.length + ' de ' + invs.length + '.\n\nSin precio de TradingView: ' + missing.join(', ') + '.\n\nPuedes poner su símbolo de TradingView en Editar, o el precio a mano.');
-    else toast('Precios actualizados (' + done.length + ')');
+    if (missing.length && !quiet) alert('Precios actualizados: ' + done.length + ' de ' + invs.length + '.\n\nSin precio de TradingView: ' + missing.join(', ') + '.\n\nPuedes poner su símbolo de TradingView en Editar, o el precio a mano.');
+    else if (done.length) toast('Precios actualizados (' + done.length + ')');
   } finally {
-    btn.disabled = false; btn.textContent = label;
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = label; }
   }
+}
+
+// Al abrir la app, si hace más de 6 horas de la última actualización, pide los precios sola
+function autoUpdatePrices() {
+  if (!navigator.onLine || !state.investments.length) return;
+  if (Date.now() - (state.lastPriceUpdate || 0) < 6 * 3600 * 1000) return;
+  updatePrices(null, true);
 }
 
 function priceButton() {
@@ -1053,6 +1272,7 @@ function loadDemo() {
 // ---------- Navegación ----------
 
 function render() {
+  recordSnapshot();
   const [path, query] = (location.hash.slice(1) || '/').split('?');
   const params = new URLSearchParams(query || '');
   const p = path.split('/').filter(Boolean);
@@ -1060,6 +1280,7 @@ function render() {
   else if (p[0] === 'inversiones') renderList();
   else if (p[0] === 'movimientos') renderMoves();
   else if (p[0] === 'ajustes') renderSettings();
+  else if (p[0] === 'noticias') renderNews();
   else if (p[0] === 'anadir') renderAdd();
   else if (p[0] === 'inv' && p[1] === 'nueva') renderInvForm(null);
   else if (p[0] === 'inv' && p[2] === 'editar') renderInvForm(p[1]);
@@ -1073,7 +1294,12 @@ function render() {
 }
 
 window.addEventListener('hashchange', render);
+// Al girar el móvil o cambiar el tamaño, se vuelve a dibujar la gráfica
+let resizeT;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if ($('#chart')) drawChart(); }, 150); });
 render();
+setTimeout(autoUpdatePrices, 600);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoUpdatePrices(); });
 
 if ('serviceWorker' in navigator) {
   // Si había una versión instalada y llega otra nueva, se recarga sola para mostrarla

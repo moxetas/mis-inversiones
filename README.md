@@ -10,7 +10,8 @@ Tus datos se guardan **solo en tu teléfono**: no se suben a ningún sitio.
 | --- | --- |
 | Resumen | Valor total de la cartera, ganancia o pérdida en euros y en %, dinero aportado y retirado, dividendos cobrados, reparto por tipo y por plataforma. |
 | Inversiones | Lista de inversiones con su valor y rentabilidad. Al tocar una se ven participaciones, precio medio de compra, ganancia sin vender y ya vendida, y sus movimientos. |
-| Movimientos | Todas las compras, ventas y dividendos por meses, con totales por año. |
+| Movimientos | Gráfica de la evolución del patrimonio (valor frente a dinero puesto) y todas las compras, ventas y dividendos por meses, con totales por año. |
+| Noticias | Noticias en directo de TradingView: de la bolsa, de cripto y de cada uno de tus activos. |
 | Ajustes | Moneda, copia de seguridad (guardar y recuperar), exportar a Excel (CSV) y borrar todo. |
 
 - Cada inversión se apunta de una de dos formas: **por participaciones** (acciones, ETF, fondos, cripto, planes de pensiones: cantidad × precio) o **solo por importe** (depósitos, cuentas, inmuebles: euros aportados y valor actual).

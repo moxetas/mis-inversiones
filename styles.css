@@ -18,6 +18,7 @@
   /* Colores por tipo de inversión, siempre en este orden */
   --t1: #2a78d6; --t2: #eb6834; --t3: #1baf7a; --t4: #eda100;
   --t5: #e87ba4; --t6: #008300; --t7: #6250d6; --t8: #8a8d94;
+  --series-1: #2a78d6;
   color-scheme: light;
 }
 
@@ -38,6 +39,7 @@
     --shadow: none;
     --t1: #3987e5; --t2: #d95926; --t3: #199e70; --t4: #c98500;
     --t5: #d55181; --t6: #008300; --t7: #9085e9; --t8: #80848c;
+    --series-1: #3987e5;
     color-scheme: dark;
   }
 }
@@ -193,6 +195,41 @@ a.row:active, button.row:active { background: var(--surface-2); }
 .row .s { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .end { text-align: right; font-variant-numeric: tabular-nums; }
 .row .end .s { font-size: 13px; }
+.row .s.good { color: var(--good); }
+.row .s.bad { color: var(--bad); }
+.row .gl { font-weight: 600; }
+
+/* ---------- Total sin vender ---------- */
+.unreal { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.unreal .k { color: var(--muted); font-size: 14px; }
+.unreal .v { font-size: 22px; font-weight: 700; }
+.unreal .pct-big { font-size: 22px; font-weight: 700; }
+
+/* ---------- Gráfica del patrimonio ---------- */
+.chart-card .big { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+.chart-card .delta { font-weight: 600; margin: 2px 0 12px; }
+.legend-row { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+.ln { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--series-1); vertical-align: middle; margin-right: 6px; }
+.ln.c { border-top: 2px dashed var(--muted); }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; touch-action: pan-y; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .contrib { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 5 4; }
+.chart .value { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .area { fill: var(--series-1); opacity: 0.12; }
+.chart .dot { fill: var(--series-1); stroke: var(--surface); stroke-width: 2; }
+.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; }
+.chart .tip {
+  position: absolute; top: 0; width: 150px; pointer-events: none;
+  background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15); padding: 6px 10px; font-size: 13px; font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Noticias ---------- */
+.news-chips button { display: inline-flex; align-items: center; gap: 6px; }
+.news-card { padding: 0; overflow: hidden; }
+.news { width: 100%; }
 .dot { width: 10px; height: 36px; border-radius: 4px; }
 .logo {
   position: relative; flex: none; display: grid; place-items: center;
@@ -272,7 +309,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   -webkit-backdrop-filter: saturate(1.6) blur(14px);
