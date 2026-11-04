@@ -70,7 +70,7 @@ def items(root, must):
         key = re.sub(r'\W+', ' ', title.lower()).strip()
         if not title or key in seen or source.lower() in DE_PAGO or source.lower() in OTRAS:
             continue
-        if not en_espanol(title) or (must and not any(m in title.lower() for m in must)):
+        if not en_espanol(title) or OTRO_ALFABETO.search(source) or (must and not any(m in title.lower() for m in must)):
             continue
         if time.time() - published > MAX_DAYS * 86400:
             continue
