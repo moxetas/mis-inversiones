@@ -6,7 +6,7 @@ o nombre, con la lista «catalog» que se publica junto a las noticias), así qu
 lista sus noticias aparecen sin hacer nada. Una tarea de GitHub Actions ejecuta este script cada hora.
 Uso: python3 scripts/noticias.py salida.json
 """
-import email.utils, html, json, re, sys, time, urllib.parse, urllib.request
+import email.utils, hashlib, html, json, re, sys, time, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
 GOOGLE = 'https://news.google.com/rss/search'
@@ -180,8 +180,9 @@ def items(root, must):
         if time.time() - published > MAX_DAYS * 86400:
             continue
         seen.add(key)
-        out.append({'id': it.findtext('guid') or it.findtext('link'), 'title': html.unescape(title), 'source': source,
-                    'published': published, 'url': it.findtext('link')})
+        link = it.findtext('link') or ''
+        out.append({'id': hashlib.md5(link.encode()).hexdigest()[:12], 'title': html.unescape(title), 'source': source,
+                    'published': published, 'url': link})
     return sorted(out, key=lambda x: -x['published'])[:PER_FEED]
 
 def main(out):
