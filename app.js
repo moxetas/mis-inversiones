@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '18';
+const APP_VERSION = '20';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -102,6 +102,7 @@ function kindName(kind, inv) {
   const unitsMode = inv && inv.mode === 'units';
   if (kind === 'buy') return unitsMode ? 'Compra' : 'Aportación';
   if (kind === 'sell') return unitsMode ? 'Venta' : 'Retirada';
+  if (kind === 'rebuy') return 'Recompra';
   return inv && ['depositos', 'rentafija'].includes(inv.type) ? 'Intereses' : 'Dividendo / interés';
 }
 
@@ -131,6 +132,14 @@ function calc(inv) {
         cost = Math.max(0, cost - m.amount);
       }
       if (inv.valueDate && m.date > inv.valueDate) flowsAfterValue -= m.amount;
+    } else if (m.kind === 'rebuy') {
+      // Recompra: vendes y vuelves a comprar al momento. No es una venta de verdad: el coste sigue siendo el de antes
+      // y solo se suma la diferencia de dinero (lo que pagas de más o recibes de menos al recomprar)
+      const net = m.amount + fee - (m.amountOut || 0);
+      if (net >= 0) contributed += net; else withdrawn += -net;
+      cost += net;
+      held = Math.max(0, held + (m.units || 0) - (m.unitsOut || 0));
+      lastPrice = m.price;
     } else {
       income += m.amount - fee;
     }
@@ -408,12 +417,15 @@ function renderDetail(id) {
 function moveRow(m, showInv) {
   const inv = invById(m.invId);
   const name = kindName(m.kind, inv);
-  const sign = m.kind === 'buy' ? '−' : '+';
-  const net = m.kind === 'buy' ? m.amount + (m.fee || 0) : m.amount - (m.fee || 0);
+  const rb = m.kind === 'rebuy';
+  const rbNet = rb ? m.amount + (m.fee || 0) - (m.amountOut || 0) : 0;
+  const sign = m.kind === 'buy' || (rb && rbNet >= 0) ? '−' : '+';
+  const net = rb ? Math.abs(rbNet) : m.kind === 'buy' ? m.amount + (m.fee || 0) : m.amount - (m.fee || 0);
   let detail = fmtDate(m.date);
   const cur = invCur(inv);
-  if (inv && inv.mode === 'units' && m.kind !== 'income' && m.units) detail += ' · ' + units(m.units) + ' × ' + price(m.price, cur);
-  const letter = { buy: m.kind === 'buy' && inv && inv.mode === 'units' ? 'C' : 'A', sell: inv && inv.mode === 'units' ? 'V' : 'R', income: '+' }[m.kind];
+  if (rb) detail += ' · vendes ' + units(m.unitsOut) + ' y recompras ' + units(m.units);
+  else if (inv && inv.mode === 'units' && m.kind !== 'income' && m.units) detail += ' · ' + units(m.units) + ' × ' + price(m.price, cur);
+  const letter = { buy: m.kind === 'buy' && inv && inv.mode === 'units' ? 'C' : 'A', sell: inv && inv.mode === 'units' ? 'V' : 'R', income: '+', rebuy: '↻' }[m.kind];
   return `
     <a class="row" href="#/mov/${m.id}">
       <span class="badge ${m.kind}" aria-hidden="true">${letter}</span>
@@ -555,6 +567,7 @@ function renderValueForm(id) {
 function renderMoveForm(id, params) {
   const m = id ? state.moves.find((x) => x.id === id) : null;
   if (id && !m) return go('#/movimientos');
+  if (m && m.kind === 'rebuy') return renderRebuy(m);
   if (!state.investments.length) return go('#/inv/nueva');
   const presetInv = m ? m.invId : params.get('inv');
   const first = params.get('primera') === '1';
@@ -638,7 +651,7 @@ function renderMoveForm(id, params) {
       if (curKind === 'sell') {
         // No se puede vender más de lo que se tenía en esa fecha
         const others = state.moves.filter((x) => x.invId === inv.id && (!m || x.id !== m.id) && x.date <= date && x.kind !== 'income');
-        const had = others.reduce((s, x) => s + (x.kind === 'buy' ? x.units || 0 : -(x.units || 0)), 0);
+        const had = others.reduce((s, x) => s + (x.kind === 'buy' ? x.units || 0 : x.kind === 'rebuy' ? (x.units || 0) - (x.unitsOut || 0) : -(x.units || 0)), 0);
         if (q > had + 1e-9) { toast('En esa fecha solo tenías ' + units(Math.max(0, had)) + ' participaciones'); f.elements.units.focus(); return; }
       }
       Object.assign(data, { units: q, price: p, amount: q * p });
@@ -668,6 +681,31 @@ function renderMoveForm(id, params) {
   }
 }
 
+function renderRebuy(m) {
+  const inv = invById(m.invId), cur = invCur(inv), pr = (x) => price(x, cur), mo = (x) => money(x, cur);
+  const net = m.amount + (m.fee || 0) - (m.amountOut || 0);
+  setChrome({ title: 'Recompra', tab: 'invs', back: inv ? '#/inv/' + inv.id : '#/movimientos' });
+  view.innerHTML = `
+    <section class="card">
+      <h2>${esc(inv ? inv.name : '')} · ${esc(fmtDate(m.date))}</h2>
+      <div class="stats" style="margin:0;padding:0;border:0">
+        <div class="stat"><div class="k">Vendes</div><div class="v">${units(m.unitsOut)} × ${pr(m.priceOut)}</div></div>
+        <div class="stat"><div class="k">Recompras</div><div class="v">${units(m.units)} × ${pr(m.price)}</div></div>
+        <div class="stat"><div class="k">Recibes al vender</div><div class="v">${mo(m.amountOut)}</div></div>
+        <div class="stat"><div class="k">Pagas al recomprar</div><div class="v">${mo(m.amount + (m.fee || 0))}</div></div>
+        <div class="stat"><div class="k">Diferencia</div><div class="v ${cls(-net)}">${signed(-net, mo)}</div></div>
+      </div>
+      <p class="note" style="margin:12px 0 0">Una recompra no cambia tu precio real de compra: solo cuenta la diferencia de dinero. ${m.note ? esc(m.note) : ''}</p>
+    </section>
+    <button class="btn danger" type="button" id="del">Borrar recompra</button>`;
+  $('#del').addEventListener('click', () => {
+    if (!confirm('¿Borrar esta recompra? No se puede deshacer.')) return;
+    state.moves = state.moves.filter((x) => x.id !== m.id);
+    saveState(); toast('Recompra borrada');
+    location.replace(inv ? '#/inv/' + inv.id : '#/movimientos');
+  });
+}
+
 // ---------- Pantalla: Movimientos ----------
 
 let moveYear = 'all';
@@ -676,7 +714,8 @@ function renderMoves() {
   setChrome({ title: 'Movimientos', tab: 'moves', action: state.investments.length ? { href: '#/mov/nuevo', label: 'Añadir movimiento', icon: ICON_PLUS } : null });
   if (!state.moves.length) {
     view.innerHTML = `<div class="card empty"><p>Aún no hay movimientos.</p>${state.investments.length
-      ? '<a class="btn" href="#/mov/nuevo">Apuntar un movimiento</a>' : '<a class="btn" href="#/inv/nueva">Añadir una inversión</a>'}</div>`;
+      ? '<a class="btn" href="#/mov/nuevo">Apuntar un movimiento</a>' : '<a class="btn" href="#/inv/nueva">Añadir una inversión</a>'}
+      <p></p><a class="btn secondary" href="#/importar">Importar extracto del bróker (PDF o CSV)</a></div>`;
     return;
   }
   const years = [...new Set(state.moves.map((m) => m.date.slice(0, 4)))].sort().reverse();
@@ -684,7 +723,14 @@ function renderMoves() {
   const list = state.moves.filter((m) => moveYear === 'all' || m.date.startsWith(moveYear)).sort(byDate).reverse();
   const sum = { buy: 0, sell: 0, income: 0 };
   for (const m of list) {
-    const v = toBase(m.kind === 'buy' ? m.amount + (m.fee || 0) : m.amount - (m.fee || 0), invCur(invById(m.invId)));
+    const c = invCur(invById(m.invId));
+    if (m.kind === 'rebuy') {
+      const b = toBase(m.amount + (m.fee || 0), c), s2 = toBase(m.amountOut || 0, c);
+      if (b != null) sum.buy += b;
+      if (s2 != null) sum.sell += s2;
+      continue;
+    }
+    const v = toBase(m.kind === 'buy' ? m.amount + (m.fee || 0) : m.amount - (m.fee || 0), c);
     if (v != null) sum[m.kind] += v;
   }
 
@@ -702,6 +748,7 @@ function renderMoves() {
 
   view.innerHTML = `
     ${chartCard()}
+    <a class="btn secondary" href="#/importar" style="margin-bottom:16px">Importar extracto del bróker (PDF o CSV)</a>
     <div class="chips" role="group" aria-label="Año">
       <button type="button" data-y="all" aria-pressed="${moveYear === 'all'}">Todos</button>
       ${years.map((y) => `<button type="button" data-y="${y}" aria-pressed="${moveYear === y}">${y}</button>`).join('')}
@@ -737,7 +784,8 @@ function contributionSteps() {
   let acc = 0;
   for (const m of state.moves.slice().sort(byDate)) {
     if (m.kind === 'income') continue;
-    const v = toBase(m.kind === 'buy' ? m.amount + (m.fee || 0) : -(m.amount - (m.fee || 0)), invCur(invById(m.invId)));
+    const raw = m.kind === 'rebuy' ? m.amount + (m.fee || 0) - (m.amountOut || 0) : m.kind === 'buy' ? m.amount + (m.fee || 0) : -(m.amount - (m.fee || 0));
+    const v = toBase(raw, invCur(invById(m.invId)));
     if (v == null) continue;
     acc += v;
     if (steps.length && steps[steps.length - 1].d === m.date) steps[steps.length - 1].c = acc;
@@ -1053,7 +1101,8 @@ function renderSettings() {
     const lines = [['Fecha', 'Inversión', 'Tipo', 'Plataforma', 'Movimiento', 'Participaciones', 'Precio', 'Importe', 'Comisión o retención', 'Moneda', 'Nota'].map(q).join(';')];
     for (const m of state.moves.slice().sort(byDate)) {
       const inv = invById(m.invId) || {};
-      lines.push([q(m.date), q(inv.name), q(typeOf(inv.type).name), q(inv.platform), q(kindName(m.kind, inv)), n(m.units), n(m.price), n(m.amount), n(m.fee || 0), q(invCur(inv)), q(m.note)].join(';'));
+      const note = m.kind === 'rebuy' ? 'Vendes ' + m.unitsOut + ' a ' + m.priceOut + '. ' + (m.note || '') : m.note;
+      lines.push([q(m.date), q(inv.name), q(typeOf(inv.type).name), q(inv.platform), q(kindName(m.kind, inv)), n(m.units), n(m.price), n(m.amount), n(m.fee || 0), q(invCur(inv)), q(note)].join(';'));
     }
     shareFile('movimientos-' + todayKey() + '.csv', '﻿' + lines.join('\r\n'), 'text/csv');
   });
@@ -1286,7 +1335,7 @@ function parseData(text, errorMsg) {
     const data = parseCompact(text) || JSON.parse(text);
     const ok = data && Array.isArray(data.investments) && Array.isArray(data.moves)
       && data.investments.every((i) => i && i.id && i.name && (i.mode === 'units' || i.mode === 'amount'))
-      && data.moves.every((m) => m && m.id && m.invId && ['buy', 'sell', 'income'].includes(m.kind) && /^\d{4}-\d{2}-\d{2}$/.test(m.date) && typeof m.amount === 'number');
+      && data.moves.every((m) => m && m.id && m.invId && ['buy', 'sell', 'income', 'rebuy'].includes(m.kind) && /^\d{4}-\d{2}-\d{2}$/.test(m.date) && typeof m.amount === 'number');
     if (!ok) throw new Error('formato');
     return data;
   } catch (err) {
@@ -1362,6 +1411,7 @@ function render() {
   else if (p[0] === 'ajustes') renderSettings();
   else if (p[0] === 'noticias') renderNews();
   else if (p[0] === 'anadir') renderAdd();
+  else if (p[0] === 'importar') renderImport();
   else if (p[0] === 'inv' && p[1] === 'nueva') renderInvForm(null);
   else if (p[0] === 'inv' && p[2] === 'editar') renderInvForm(p[1]);
   else if (p[0] === 'inv' && p[2] === 'valor') renderValueForm(p[1]);

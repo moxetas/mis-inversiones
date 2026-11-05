@@ -336,3 +336,15 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   transition: opacity .2s, transform .2s;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- Importar ---------- */
+.check { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; font-size: 15px; }
+.check input, .imp-row input[type=checkbox] { width: 22px; height: 22px; min-height: 0; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.imp-row { grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; cursor: pointer; }
+.imp-row .s { white-space: normal; }
+.imp-row .warn { color: var(--bad); }
+.tag { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 1px 6px; vertical-align: middle; }
+.note-card p { margin: 0 0 10px; font-size: 15px; }
+.skip-list { margin: 10px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+details.card summary { cursor: pointer; font-weight: 600; }
+.badge.rebuy { color: var(--accent); }

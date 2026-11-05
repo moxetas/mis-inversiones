@@ -10,7 +10,7 @@ Tus datos se guardan **solo en tu teléfono**: no se suben a ningún sitio.
 | --- | --- |
 | Resumen | Valor total de la cartera, ganancia o pérdida en euros y en %, dinero aportado y retirado, dividendos cobrados, reparto por tipo y por plataforma. |
 | Inversiones | Lista de inversiones con su valor y rentabilidad. Al tocar una se ven participaciones, precio medio de compra, ganancia sin vender y ya vendida, y sus movimientos. |
-| Movimientos | Gráfica de la evolución del patrimonio (valor frente a dinero puesto) y todas las compras, ventas y dividendos por meses, con totales por año. |
+| Movimientos | Gráfica de la evolución del patrimonio (valor frente a dinero puesto), todas las compras, ventas y dividendos por meses, con totales por año, e **importar el extracto del bróker** (PDF o CSV): la app apunta sola las compras, ventas, dividendos y recompras, sin repetir las que ya estaban. |
 | Noticias | Noticias gratuitas en español (de Google Noticias, sin webs de pago): de la bolsa, de cripto y de cada uno de tus activos (la app los reconoce solos entre unos 90 activos habituales: Ibex 35, grandes de EE. UU. y Europa, cripto, oro, plata e índices). Una tarea de GitHub Actions (`.github/workflows/noticias.yml`, que ejecuta `scripts/noticias.py`) las descarga cada hora en la rama `noticias`. |
 | Ajustes | Moneda, copia de seguridad (guardar y recuperar), exportar a Excel (CSV) y borrar todo. |
 
@@ -46,6 +46,8 @@ Es una web normal (HTML, CSS y JavaScript) sin librerías ni servidor:
 | `index.html` | Estructura de la app. |
 | `styles.css` | Diseño, con modo claro y oscuro. |
 | `app.js` | Pantallas, cálculos y datos guardados en el teléfono. |
+| `importar.js` | Lee los extractos de los brókeres (PDF con pdf.js, o CSV) y los convierte en movimientos. |
+| `vendor/pdfjs/` | pdf.js de Mozilla (licencia Apache-2.0), para leer los PDF dentro del teléfono. |
 | `sw.js` | Guarda la app en el teléfono para que abra sin cobertura. |
 | `manifest.webmanifest`, `icons/` | Nombre e icono al instalarla. |
 
