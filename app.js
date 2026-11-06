@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '20';
+const APP_VERSION = '21';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -311,10 +311,11 @@ function renderHome() {
 
     ${plats.length > 1 ? `
     <section class="card">
-      <h2>Por plataforma o banco</h2>
-      <ul class="legend">
-        ${plats.map(([k, v]) => `<li><span></span><span>${esc(k)}</span><span class="amt">${money(v)}</span><span class="pct">${pct(share(v))}</span></li>`).join('')}
+      <h2>Por bróker o billetera</h2>
+      <ul class="legend plat-legend">
+        ${byPlatform(rows).map((g) => `<li><span></span><span>${esc(g.name)}<div class="num gl ${cls(g.un)}">${signed(g.un)} · ${g.cost > 0 ? signed(g.un / g.cost, pct) : ''}</div></span><span class="amt">${money(g.value)}</span><span class="pct">${pct(share(g.value))}</span></li>`).join('')}
       </ul>
+      <a class="more" href="#/inversiones">Ver por bróker o billetera</a>
     </section>` : ''}
 
     <h2 class="section-title">Tus inversiones más grandes</h2>
@@ -340,6 +341,40 @@ function invRow({ inv, c }) {
     </a>`;
 }
 
+// Ganancia o pérdida sin vender de cada bróker o billetera (solo inversiones abiertas, en la moneda principal)
+function byPlatform(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    if (r.c.closed || !r.b) continue;
+    const name = (r.inv.platform || '').trim() || 'Sin plataforma';
+    const u = toBase(r.c.unrealized, r.cur), k = toBase(r.c.cost, r.cur);
+    const g = map.get(name) || { name, value: 0, un: 0, cost: 0, n: 0 };
+    g.value += r.b.value; g.n++;
+    if (u != null && k != null) { g.un += u; g.cost += k; }
+    map.set(name, g);
+  }
+  return [...map.values()].sort((a, b) => b.value - a.value);
+}
+const PLATFORM_LOGO = { caixabank: 'icons/logos/caixabank.png' };
+function platformBadge(name) {
+  const logo = PLATFORM_LOGO[normName(name).trim()];
+  if (logo) return `<span class="logo" style="width:40px;height:40px" aria-hidden="true"><img src="${logo}" alt=""></span>`;
+  const ini = esc(name.replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?');
+  return `<span class="logo ini plat-ini" style="width:40px;height:40px;font-size:14px" aria-hidden="true">${ini}</span>`;
+}
+function platformRow(g, active) {
+  return `
+    <button type="button" class="row plat-row" data-plat="${esc(g.name)}" aria-pressed="${active}">
+      ${platformBadge(g.name)}
+      <span class="main"><div class="t">${esc(g.name)}</div><div class="s">${g.n === 1 ? '1 inversión' : g.n + ' inversiones'} · ${money(g.value)}</div></span>
+      <span class="end">
+        <div class="num gl ${cls(g.un)}">${signed(g.un)}</div>
+        <div class="s num gl ${cls(g.un)}">${g.cost > 0 ? signed(g.un / g.cost, pct) : ''}</div>
+      </span>
+    </button>`;
+}
+let listPlatform = null;   // bróker o billetera que se está mirando en Inversiones (null = todos)
+
 // ---------- Pantalla: Inversiones ----------
 
 function renderList() {
@@ -350,21 +385,37 @@ function renderList() {
     return;
   }
   const bv = (r) => (r.b ? r.b.value : 0);
-  const open = rows.filter((r) => !r.c.closed).sort((a, b) => bv(b) - bv(a));
-  const closed = rows.filter((r) => r.c.closed).sort((a, b) => a.inv.name.localeCompare(b.inv.name, 'es'));
+  const plats = byPlatform(rows);
+  if (listPlatform && !plats.some((g) => g.name === listPlatform)) listPlatform = null;
+  const inPlat = (r) => !listPlatform || ((r.inv.platform || '').trim() || 'Sin plataforma') === listPlatform;
+  const open = rows.filter((r) => !r.c.closed && inPlat(r)).sort((a, b) => bv(b) - bv(a));
+  const closed = rows.filter((r) => r.c.closed && inPlat(r)).sort((a, b) => a.inv.name.localeCompare(b.inv.name, 'es'));
   // Total sin vender, en la moneda principal
   let un = 0, cost = 0;
   for (const r of open) { const u = toBase(r.c.unrealized, r.cur), k = toBase(r.c.cost, r.cur); if (u != null && k != null) { un += u; cost += k; } }
   view.innerHTML = `
     ${open.length ? `<section class="card unreal">
-      <div><div class="k">Ganancia o pérdida sin vender</div><div class="v num ${cls(un)}">${arrow(un)}${signed(un)}</div></div>
+      <div><div class="k">Ganancia o pérdida sin vender${listPlatform ? ' en ' + esc(listPlatform) : ''}</div><div class="v num ${cls(un)}">${arrow(un)}${signed(un)}</div></div>
       <div class="num pct-big ${cls(un)}">${cost > 0 ? signed(un / cost, pct) : ''}</div>
     </section>` : ''}
+    ${plats.length > 1 ? `<h2 class="section-title">Por bróker o billetera</h2>
+    <div class="list">${plats.map((g) => platformRow(g, g.name === listPlatform)).join('')}</div>` : ''}
+    ${listPlatform ? `<div class="filter-bar"><span>Solo <b>${esc(listPlatform)}</b></span><button type="button" class="btn small secondary" id="plat-all">Ver todas</button></div>` : plats.length > 1 ? '<h2 class="section-title">Todas tus inversiones</h2>' : ''}
     ${open.length ? `<div class="list">${open.map(invRow).join('')}</div>` : ''}
     ${closed.length ? `<h2 class="section-title">Cerradas (ya vendidas o retiradas)</h2><div class="list">${closed.map(invRow).join('')}</div>` : ''}
     <div style="margin-bottom:12px">${priceButton()}</div>
     <a class="btn" href="#/inv/nueva">${ICON_PLUS} Añadir inversión</a>`;
   bindPriceButton();
+  // Tocar un bróker o billetera enseña solo sus inversiones; tocarlo otra vez, todas
+  for (const b of view.querySelectorAll('.plat-row')) {
+    b.addEventListener('click', () => {
+      listPlatform = listPlatform === b.dataset.plat ? null : b.dataset.plat;
+      renderList();
+      if (listPlatform) { const f = $('.filter-bar'); if (f) f.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+    });
+  }
+  const all = $('#plat-all');
+  if (all) all.addEventListener('click', () => { listPlatform = null; renderList(); });
 }
 
 // ---------- Pantalla: detalle de una inversión ----------

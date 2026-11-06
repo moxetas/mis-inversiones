@@ -348,3 +348,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .skip-list { margin: 10px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
 details.card summary { cursor: pointer; font-weight: 600; }
 .badge.rebuy { color: var(--accent); }
+
+/* ---------- Por bróker o billetera ---------- */
+.plat-row { cursor: pointer; font: inherit; color: inherit; }
+.plat-row[aria-pressed="true"] { background: var(--accent-soft); }
+.plat-ini { background: var(--surface-2); color: var(--fg); }
+.plat-row .end .num:first-child { font-weight: 600; }
+.filter-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 4px 8px; color: var(--muted); }
+.filter-bar .btn.small { min-height: 36px; padding: 6px 14px; font-size: 14px; }
+.plat-legend .gl { font-size: 13px; font-weight: 600; }
+.card .more { display: inline-block; margin-top: 10px; color: var(--accent); font-weight: 600; font-size: 14px; }
