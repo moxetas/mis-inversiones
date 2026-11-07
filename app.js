@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '33';
+const APP_VERSION = '34';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -530,7 +530,7 @@ function drawTvChart(inv, target) {
   const full = $('#chart-full');
   if (full && !target) full.onclick = () => openFullChart(inv);
   if (!navigator.onLine) { box.innerHTML = '<div class="empty"><p>Sin conexión: el gráfico se verá cuando tengas internet.</p></div>'; return; }
-  const dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  const dark = isDark();
   box.innerHTML = '<div class="tradingview-widget-container" style="height:100%;width:100%"><div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div></div>';
   const sc = document.createElement('script');
   sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
@@ -1197,6 +1197,11 @@ function renderNews() {
 function renderSettings() {
   setChrome({ title: 'Ajustes', tab: 'settings' });
   view.innerHTML = `
+    <a class="card look-link" href="#/ajustes/aspecto">
+      <span class="look-ic" aria-hidden="true">🎨</span>
+      <span><b>Personalizar</b><br><span class="s">Colores, modo oscuro y fondo de pantalla</span></span>
+      <span class="chev" aria-hidden="true">›</span>
+    </a>
     <section class="card form">
       <label class="field"><span>Moneda principal</span>
         <select id="cur">${CURRENCIES.map((c) => `<option ${c === state.currency ? 'selected' : ''}>${c}</option>`).join('')}</select>
@@ -1644,6 +1649,7 @@ function render() {
   if (!p.length) renderHome();
   else if (p[0] === 'inversiones') { renderList(); if (Date.now() - (state.lastPriceUpdate || 0) > 60 * 1000) setTimeout(() => updatePrices(null, true, true), 300); }
   else if (p[0] === 'movimientos') renderMoves();
+  else if (p[0] === 'ajustes' && p[1] === 'aspecto') renderLook();
   else if (p[0] === 'ajustes') renderSettings();
   else if (p[0] === 'noticias') renderNews();
   else if (p[0] === 'grupo' && p[1] === 'reto' && p[2]) renderGame(p[2]);

@@ -1,11 +1,12 @@
 // Guarda la app en el teléfono para que abra aunque no haya cobertura.
 // Cambia el número de CACHE cada vez que se publique una versión nueva.
-const CACHE = 'inversiones-v33';
+const CACHE = 'inversiones-v34';
 const LOGOS = 'logos-v1';
 const FILES = [
   './',
   'index.html',
   'styles.css',
+  'personalizar.js',
   'importar.js',
   'grupo.js',
   'retos.js',
@@ -14,6 +15,7 @@ const FILES = [
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
+  'icons/wall-moxetas.png',
   'icons/apple-touch-icon.png',
   'icons/logos/amd.png',
   'icons/logos/apple.png',
