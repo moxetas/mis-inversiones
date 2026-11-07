@@ -371,3 +371,5 @@ details.card summary { cursor: pointer; font-weight: 600; }
 .chart-full-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 4px 16px; font-weight: 650; border-bottom: 1px solid var(--line); }
 .chart-full-body { flex: 1; min-height: 0; }
 .no-scroll, .no-scroll body { overflow: hidden; }
+
+.row .day { font-size: 12px; font-weight: 500; opacity: 0.9; }
