@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '24';
+const APP_VERSION = '25';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -365,6 +365,8 @@ const PLATFORM_LOGO = {
   ledger: 'icons/logos/plat-ledger.png', 'ledger wallet': 'icons/logos/plat-ledger.png',
   'trading 212': 'icons/logos/plat-trading-212.png', trading212: 'icons/logos/plat-trading-212.png', t212: 'icons/logos/plat-trading-212.png',
   'trade republic': 'icons/logos/plat-trade-republic.png',
+  ing: 'icons/logos/plat-ing.png', klarna: 'icons/logos/plat-klarna.png',
+  'metatrader 5': 'icons/logos/plat-metatrader-5.png', metatrader5: 'icons/logos/plat-metatrader-5.png', mt5: 'icons/logos/plat-metatrader-5.png', metatrader: 'icons/logos/plat-metatrader-5.png',
 };
 function platformBadge(name) {
   const logo = PLATFORM_LOGO[normName(name).trim()];

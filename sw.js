@@ -1,6 +1,6 @@
 // Guarda la app en el teléfono para que abra aunque no haya cobertura.
 // Cambia el número de CACHE cada vez que se publique una versión nueva.
-const CACHE = 'inversiones-v24';
+const CACHE = 'inversiones-v25';
 const LOGOS = 'logos-v1';
 const FILES = [
   './',
@@ -28,6 +28,9 @@ const FILES = [
   'icons/logos/plat-ledger.png',
   'icons/logos/plat-trading-212.png',
   'icons/logos/plat-trade-republic.png',
+  'icons/logos/plat-ing.png',
+  'icons/logos/plat-klarna.png',
+  'icons/logos/plat-metatrader-5.png',
 ];
 
 self.addEventListener('install', (event) => {
