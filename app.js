@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '22';
+const APP_VERSION = '23';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -355,7 +355,12 @@ function byPlatform(rows) {
   }
   return [...map.values()].sort((a, b) => b.value - a.value);
 }
-const PLATFORM_LOGO = { caixabank: 'icons/logos/caixabank.png' };
+// Logos de brókeres y billeteras (Interactive Brokers, Kraken y BingX: de TradingView; Trezor: de Simple Icons)
+const PLATFORM_LOGO = {
+  caixabank: 'icons/logos/caixabank.png',
+  'interactive brokers': 'icons/logos/plat-interactive-brokers.svg', ibkr: 'icons/logos/plat-interactive-brokers.svg',
+  kraken: 'icons/logos/plat-kraken.svg', bingx: 'icons/logos/plat-bingx.svg', trezor: 'icons/logos/plat-trezor.svg',
+};
 function platformBadge(name) {
   const logo = PLATFORM_LOGO[normName(name).trim()];
   if (logo) return `<span class="logo" style="width:40px;height:40px" aria-hidden="true"><img src="${logo}" alt=""></span>`;
