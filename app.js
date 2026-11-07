@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '30';
+const APP_VERSION = '31';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -1388,6 +1388,8 @@ const LOCAL_LOGO = {
   IE00B6R52259: 'icons/logos/ishares.png',      // gestora del ETF ACWI
   DE000A0S9GB0: 'icons/logos/xetra-gold.png',   // Xetra-Gold
   IE00B43VDT70: 'icons/logos/invesco.png',      // gestora del ETF de plata
+  IE00BK5BQT80: 'icons/logos/vanguard.svg',     // Vanguard FTSE All-World (acumulación, VWCE)
+  IE00B3RBWM25: 'icons/logos/vanguard.svg',     // Vanguard FTSE All-World (distribución, VWRL)
 };
 function logoIds(inv) {
   const t = (inv.ticker || '').toUpperCase();
