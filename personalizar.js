@@ -51,7 +51,8 @@ const PRESETS = [
   { name: 'Algodón', mode: 'light', accent: '#db2777', wall: 'rosa', dim: 20 },
 ];
 
-function defaultLook() { return { mode: 'auto', accent: '#1f5fbf', wall: 'none', dim: 30, oled: false, glass: true }; }
+// Por defecto: el logo de Moxetas de fondo, en oscuro y dorado. Cada uno lo cambia en Ajustes › Personalizar.
+function defaultLook() { return { mode: 'dark', accent: '#d4a72c', wall: 'moxetas', dim: 20, oled: false, glass: true }; }
 function loadLook() {
   try { return Object.assign(defaultLook(), JSON.parse(localStorage.getItem(LOOK_KEY)) || {}); } catch (e) { return defaultLook(); }
 }
