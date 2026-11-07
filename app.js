@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '32';
+const APP_VERSION = '33';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -1646,6 +1646,7 @@ function render() {
   else if (p[0] === 'movimientos') renderMoves();
   else if (p[0] === 'ajustes') renderSettings();
   else if (p[0] === 'noticias') renderNews();
+  else if (p[0] === 'grupo' && p[1] === 'reto' && p[2]) renderGame(p[2]);
   else if (p[0] === 'grupo') renderGroup();
   else if (p[0] === 'anadir') renderAdd();
   else if (p[0] === 'importar') renderImport();

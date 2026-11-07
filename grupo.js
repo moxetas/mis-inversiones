@@ -110,6 +110,7 @@ function renderGroup() {
     <div class="seg" style="margin-bottom:14px">
       <label><input type="radio" name="gt" value="ranking" ${groupTab === 'ranking' ? 'checked' : ''}><span>Ranking</span></label>
       <label><input type="radio" name="gt" value="chat" ${groupTab === 'chat' ? 'checked' : ''}><span>Chat</span></label>
+      <label><input type="radio" name="gt" value="retos" ${groupTab === 'retos' ? 'checked' : ''}><span>Retos</span></label>
     </div>
     <div id="g-body"><div class="card empty"><p>Cargando…</p></div></div>`;
   for (const r of view.querySelectorAll('[name=gt]')) r.addEventListener('change', () => { groupTab = r.value; renderGroupBody(); });
@@ -152,7 +153,7 @@ async function startGroupLive() {
     .subscribe();
 }
 
-function renderGroupBody() { if (groupTab === 'chat') renderChat(); else renderRanking(); }
+function renderGroupBody() { if (groupTab === 'chat') renderChat(); else if (groupTab === 'retos') renderGames(); else renderRanking(); }
 
 function renderRanking() {
   const b = $('#g-body'); if (!b) return;

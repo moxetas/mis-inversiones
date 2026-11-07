@@ -60,3 +60,9 @@ y hablar en un chat en tiempo real. Solo se envía el apodo, la rentabilidad tot
 y los mensajes; las inversiones nunca salen del teléfono. Funciona con Supabase (cuenta anónima, sin registro).
 Las tablas y reglas de seguridad están en `supabase/esquema.sql`. La librería `vendor/supabase/supabase.js` es
 @supabase/supabase-js 2.118.0 (licencia MIT, ver `vendor/supabase/LICENSE`).
+
+### Retos
+
+Dentro del grupo, la pestaña **Retos** permite crear un reto con fecha de inicio y duración. Hasta que empieza, cada uno
+elige de 1 a 10 activos (buscados en TradingView o de su cartera) y nadie ve los de los demás. Gana la mayor subida
+media en %. Los precios de inicio y final los guarda el servidor cada minuto con pg_cron + pg_net (`supabase/retos.sql`).
