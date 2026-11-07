@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '29';
+const APP_VERSION = '30';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -45,6 +45,7 @@ function saveState() {
 let state = loadState();
 // El Bitcoin se compró en dólares: si aún no tiene moneda, se le pone USD
 // y está guardado en un Ledger
+for (const i of state.investments) if (i.tv && !i.tv.includes(':')) delete i.tvTried;
 for (const i of state.investments) {
   if (i.id !== 'p-btc') continue;
   if (!i.currency) i.currency = 'USD';
@@ -621,7 +622,7 @@ function renderInvForm(id) {
       </div>
       <label class="field"><span>Símbolo en TradingView</span>
         <input name="tv" maxlength="40" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="${esc(inv && tvCandidates(Object.assign({}, inv, { tv: '' }))[0] ? 'Automático: ' + tvCandidates(Object.assign({}, inv, { tv: '' }))[0] : 'Se busca solo en TradingView')}" value="${esc(inv && inv.tv ? inv.tv : '')}">
-        <small>Para «Actualizar precios». Déjalo vacío para usar el automático. Debe cotizar en la moneda de la inversión.</small></label>
+        <small>Normalmente no hace falta: la app lo busca sola. Si quieres uno concreto, ponlo como en TradingView, con la bolsa delante (p. ej. XETR:SPX); si pones solo el ticker, la app busca la cotización en la moneda de la inversión.</small></label>
       <datalist id="plats">${plats.map((p) => `<option value="${esc(p)}">`).join('')}</datalist>
       <label class="field"><span>Notas</span>
         <textarea name="notes" maxlength="500" placeholder="Opcional">${esc(inv ? inv.notes : '')}</textarea></label>
@@ -1288,7 +1289,8 @@ const TV_BY_ISIN = {
 };
 
 function tvCandidates(inv) {
-  if (inv.tv) return [inv.tv.trim().toUpperCase()];
+  // Símbolo completo (BOLSA:TICKER). Si solo se puso el ticker (p. ej. «SPCX»), lo busca tvResolve.
+  if (inv.tv && inv.tv.includes(':')) return [inv.tv.trim().toUpperCase()];
   const t = (inv.ticker || '').toUpperCase();
   if (TV_BY_ISIN[t] && invCur(inv) === 'EUR') return TV_BY_ISIN[t];   // esa lista es de cotizaciones en euros
   if (inv.tvAuto) return [inv.tvAuto];          // encontrado solo en TradingView (tvResolve)
@@ -1321,8 +1323,11 @@ async function tvResolve(inv) {
   let rows = isin ? await tvScan([{ left: 'isin', operation: 'equal', right: isin }]) : [];
   if (!rows.length) {
     let top = null;
-    const tk = !isin && inv.ticker ? inv.ticker.toUpperCase().trim() : '';
-    if (tk) top = (await tvScan([{ left: 'name', operation: 'equal', right: tk }, TYPES_TV], [0, 5]))[0];
+    const bareTv = inv.tv && !inv.tv.includes(':') ? inv.tv.toUpperCase().trim() : '';
+    const tk = bareTv || (!isin && inv.ticker ? inv.ticker.toUpperCase().trim() : '');
+    // Primero en la moneda de la inversión (p. ej. SPX en euros) y, si no, en cualquiera (SPCX en dólares)
+    if (tk) top = (await tvScan([{ left: 'name', operation: 'equal', right: tk }, { left: 'currency', operation: 'equal', right: invCur(inv) }, TYPES_TV], [0, 5]))[0]
+      || (await tvScan([{ left: 'name', operation: 'equal', right: tk }, TYPES_TV], [0, 5]))[0];
     if (!top && inv.name) top = (await tvScan([{ left: 'name,description', operation: 'match', right: inv.name.replace(/\s*\(.*\)$/, '') }, TYPES_TV], [0, 5], { sortBy: 'market_cap_basic', sortOrder: 'desc' }))[0];
     if (!top) return false;
     if (top.type === 'fund' && top.isin) rows = await tvScan([{ left: 'isin', operation: 'equal', right: top.isin }]);
