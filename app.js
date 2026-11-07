@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '31';
+const APP_VERSION = '32';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -1469,7 +1469,9 @@ async function updatePrices(btn, quiet, live) {
       else missing.push('cambio ' + state.currency + '/' + cur);
     }
     saveState();
-    const y = window.scrollY; render(); window.scrollTo(0, y);
+    publishStats(false);
+    // En el chat no se redibuja (se perdería lo que estás escribiendo)
+    if (!location.hash.startsWith('#/grupo')) { const y = window.scrollY; render(); window.scrollTo(0, y); }
     if (missing.length && !quiet) alert('Precios actualizados: ' + done.length + ' de ' + invs.length + '.\n\nSin precio de TradingView: ' + missing.join(', ') + '.\n\nPuedes poner su símbolo de TradingView en Editar, o el precio a mano.');
     else if (done.length && !live) toast('Precios actualizados (' + done.length + ')');
   } finally {
@@ -1644,6 +1646,7 @@ function render() {
   else if (p[0] === 'movimientos') renderMoves();
   else if (p[0] === 'ajustes') renderSettings();
   else if (p[0] === 'noticias') renderNews();
+  else if (p[0] === 'grupo') renderGroup();
   else if (p[0] === 'anadir') renderAdd();
   else if (p[0] === 'importar') renderImport();
   else if (p[0] === 'inv' && p[1] === 'nueva') renderInvForm(null);
