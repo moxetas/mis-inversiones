@@ -107,6 +107,7 @@ CATALOG = [
     empresa('XOM', 'ExxonMobil', isin=['US30231G1022'], tickers=['XOM', 'XONA'], alias=['exxon']),
     empresa('ASTS', 'AST SpaceMobile', isin=['US00217D1000'], tickers=['ASTS', 'M6Q'], alias=['ast spacemobile']),
     empresa('RGTI', 'Rigetti', isin=['US76655K1034'], tickers=['RGTI', 'RGT']),
+    empresa('SPCX', 'SpaceX', isin=['US84615Q1031'], tickers=['SPCX', 'SPX'], alias=['space exploration']),
     # Europa
     empresa('ASML', 'ASML', isin=['NL0010273215'], tickers=['ASML', 'ASME']),
     empresa('SAP', 'SAP', isin=['DE0007164600'], tickers=['SAP'], q=f'"SAP" software {MERCADO} when:7d'),

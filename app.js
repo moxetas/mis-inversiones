@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '21';
+const APP_VERSION = '22';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -519,7 +519,7 @@ function renderInvForm(id) {
           <input name="ticker" maxlength="20" autocapitalize="characters" placeholder="Opcional" value="${esc(inv ? inv.ticker : '')}"></label>
       </div>
       <label class="field"><span>Símbolo en TradingView</span>
-        <input name="tv" maxlength="40" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="${esc(inv && tvCandidates(Object.assign({}, inv, { tv: '' }))[0] ? 'Automático: ' + tvCandidates(Object.assign({}, inv, { tv: '' }))[0] : 'Ej.: XETR:APC')}" value="${esc(inv && inv.tv ? inv.tv : '')}">
+        <input name="tv" maxlength="40" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="${esc(inv && tvCandidates(Object.assign({}, inv, { tv: '' }))[0] ? 'Automático: ' + tvCandidates(Object.assign({}, inv, { tv: '' }))[0] : 'Se busca solo en TradingView')}" value="${esc(inv && inv.tv ? inv.tv : '')}">
         <small>Para «Actualizar precios». Déjalo vacío para usar el automático. Debe cotizar en la moneda de la inversión.</small></label>
       <datalist id="plats">${plats.map((p) => `<option value="${esc(p)}">`).join('')}</datalist>
       <label class="field"><span>Notas</span>
@@ -550,15 +550,19 @@ function renderInvForm(id) {
     };
     if (!hasMoves) data.mode = f.querySelector('[name=mode]:checked').value;
     if (inv) {
+      const changed = ['name', 'ticker', 'currency', 'tv'].some((k) => (inv[k] || '') !== (data[k] || ''));
       Object.assign(inv, data);
+      if (changed) { delete inv.tvAuto; delete inv.logo; delete inv.tvTried; }
       saveState();
       toast('Guardado');
       location.replace('#/inv/' + inv.id);
+      if (changed) autoResolve(true);
     } else {
       const n = Object.assign({ id: uid(), price: null, priceDate: null, value: null, valueDate: null, created: Date.now() }, data);
       state.investments.push(n);
       saveState();
       location.replace('#/mov/nuevo?inv=' + n.id + '&primera=1');
+      autoResolve(true);
     }
   });
   if (inv) {
@@ -714,7 +718,8 @@ function renderMoveForm(id, params) {
     if (m) Object.assign(m, data);
     else state.moves.push(Object.assign({ id: uid(), created: Date.now() }, data));
     // Si no hay un precio más reciente, el precio de esta operación pasa a ser el precio actual
-    if (data.price != null && (!inv.priceDate || date >= inv.priceDate)) { inv.price = data.price; inv.priceDate = date; inv.priceSource = null; }
+    // Si no hay un precio más reciente (o el de TradingView es de otro día), el de la operación pasa a ser el actual
+    if (data.price != null && (!inv.priceDate || date > inv.priceDate || (date === inv.priceDate && !inv.priceSource))) { inv.price = data.price; inv.priceDate = date; inv.priceSource = null; }
     saveState();
     toast(m ? 'Guardado' : 'Movimiento apuntado');
     if (presetInv) location.replace('#/inv/' + inv.id);
@@ -1184,13 +1189,76 @@ const TV_BY_ISIN = {
 function tvCandidates(inv) {
   if (inv.tv) return [inv.tv.trim().toUpperCase()];
   const t = (inv.ticker || '').toUpperCase();
-  if (TV_BY_ISIN[t]) return TV_BY_ISIN[t];
+  if (TV_BY_ISIN[t] && invCur(inv) === 'EUR') return TV_BY_ISIN[t];   // esa lista es de cotizaciones en euros
+  if (inv.tvAuto) return [inv.tvAuto];          // encontrado solo en TradingView (tvResolve)
   if (inv.type === 'cripto' && t) {
     const cur = invCur(inv);
     return ['BITSTAMP:' + t + cur, 'COINBASE:' + t + cur, 'KRAKEN:' + t + cur];
   }
   return [];
 }
+// ---------- Buscar en TradingView cualquier inversión nueva (símbolo, precio y logo) ----------
+// 1) Por ISIN; si no hay, por el ticker o por el nombre (con la lista de activos de Noticias para los nombres
+//    comerciales, como Google → Alphabet). 2) El logo de TradingView identifica a la empresa: con él se buscan
+//    todas sus cotizaciones. 3) Se elige la cotización en la moneda de la inversión con más volumen.
+const ISIN_LIKE = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
+async function tvScan(filter, range, sort) {
+  const body = JSON.stringify({ filter, columns: ['name', 'description', 'exchange', 'currency', 'logoid', 'close', 'type', 'isin', 'volume'],
+    range: range || [0, 50], sort: sort || { sortBy: 'volume', sortOrder: 'desc' }, options: { lang: 'es' } });
+  const res = await fetch('https://scanner.tradingview.com/global/scan', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body });
+  if (!res.ok) throw new Error('TradingView ' + res.status);
+  const json = await res.json();
+  return (json.data || []).map((r) => { const [name, description, exchange, currency, logoid, close, type, isin, volume] = r.d; return { s: r.s, name, description, exchange, currency, logoid, close, type, isin, volume: volume || 0 }; });
+}
+const TYPES_TV = { left: 'type', operation: 'in_range', right: ['stock', 'fund', 'dr'] };
+async function tvResolve(inv) {
+  inv.tvTried = Date.now();
+  if (inv.mode !== 'units' || inv.type === 'cripto') return false;
+  let isin = ISIN_LIKE.test((inv.ticker || '').toUpperCase()) ? inv.ticker.toUpperCase() : '';
+  if (!newsData) { try { newsData = JSON.parse(localStorage.getItem('inv.newsCache')); } catch (e) { newsData = null; } }
+  if (!isin && newsData && newsData.catalog) { const e = newsEntry(inv); if (e && e.match.isin.length) isin = e.match.isin[0]; }
+  let rows = isin ? await tvScan([{ left: 'isin', operation: 'equal', right: isin }]) : [];
+  if (!rows.length) {
+    let top = null;
+    const tk = !isin && inv.ticker ? inv.ticker.toUpperCase().trim() : '';
+    if (tk) top = (await tvScan([{ left: 'name', operation: 'equal', right: tk }, TYPES_TV], [0, 5]))[0];
+    if (!top && inv.name) top = (await tvScan([{ left: 'name,description', operation: 'match', right: inv.name.replace(/\s*\(.*\)$/, '') }, TYPES_TV], [0, 5], { sortBy: 'market_cap_basic', sortOrder: 'desc' }))[0];
+    if (!top) return false;
+    if (top.type === 'fund' && top.isin) rows = await tvScan([{ left: 'isin', operation: 'equal', right: top.isin }]);
+    else if (top.logoid) rows = await tvScan([{ left: 'logoid', operation: 'equal', right: top.logoid }, { left: 'type', operation: 'equal', right: 'stock' }]);
+    if (!rows.length) rows = [top];
+  }
+  const cur = invCur(inv);
+  const real = rows.filter((r) => r.type !== 'dr');
+  const pool = real.length ? real : rows;
+  const best = pool.filter((r) => r.currency === cur).sort((a, b) => b.volume - a.volume)[0];
+  const logo = (best && best.logoid) || (pool.find((r) => r.logoid) || {}).logoid;
+  if (logo) inv.logo = logo;
+  if (best) {
+    inv.tvAuto = best.s;
+    if (best.close > 0 && (!inv.priceSource || inv.priceSource === best.s || !inv.priceDate || inv.priceDate < todayKey())) {
+      inv.price = best.close; inv.priceDate = todayKey(); inv.priceSource = best.s;
+    }
+  }
+  if (!inv.ticker && (best || pool[0]).isin) inv.ticker = (best || pool[0]).isin;
+  return !!(logo || best);
+}
+// Busca en segundo plano las inversiones que aún no tienen símbolo o logo (como mucho una vez cada 3 días)
+let resolving = false;
+async function autoResolve(force) {
+  if (resolving || !navigator.onLine) return;
+  const todo = state.investments.filter((i) => i.mode === 'units' && i.type !== 'cripto' && !calc(i).closed
+    && (!tvCandidates(i).length || !(LOCAL_LOGO[(i.ticker || '').toUpperCase()] || i.logo))
+    && (force || !i.tvTried || Date.now() - i.tvTried > 3 * 86400000)).slice(0, 6);
+  if (!todo.length) return;
+  resolving = true;
+  let changed = false;
+  try { for (const inv of todo) { try { if (await tvResolve(inv)) changed = true; } catch (e) { /* sin conexión o TradingView no responde */ } } }
+  finally { resolving = false; }
+  saveState();
+  if (changed) render();
+}
+
 // Logos: los mismos que usa TradingView. Si uno no carga, se prueba el siguiente y al final se ponen las iniciales.
 const LOGO_BY_ISIN = {
   US0079031078: ['advanced-micro-devices'],
@@ -1261,6 +1329,7 @@ async function tvQuotes(tickers) {
 
 // quiet: al abrir la app se actualiza sola, sin avisos si algo falla
 async function updatePrices(btn, quiet) {
+  await autoResolve(!quiet);
   const invs = state.investments.filter((i) => i.mode === 'units' && !calc(i).closed);
   const curs = otherCurrencies();
   const tickers = [...new Set([...invs.flatMap(tvCandidates), ...curs.flatMap(tvFxCandidates)])];
@@ -1480,6 +1549,7 @@ let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if ($('#chart')) drawChart(); }, 150); });
 render();
 setTimeout(autoUpdatePrices, 600);
+setTimeout(() => autoResolve(false), 1500);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoUpdatePrices(); });
 
 if ('serviceWorker' in navigator) {
