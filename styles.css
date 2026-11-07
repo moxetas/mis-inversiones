@@ -373,3 +373,10 @@ details.card summary { cursor: pointer; font-weight: 600; }
 .no-scroll, .no-scroll body { overflow: hidden; }
 
 .row .day { font-size: 12px; font-weight: 500; opacity: 0.9; }
+
+/* P/L y 24h alineados: etiquetas en una columna y cifras en otra */
+.mgrid { display: grid; grid-template-columns: auto auto; justify-content: end; column-gap: 8px; row-gap: 1px; margin-top: 2px; }
+.mgrid .mk { font-size: 12px; font-weight: 600; color: var(--muted); text-align: left; align-self: center; }
+.mgrid .mv { font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; }
+.mgrid .mv.good { color: var(--good); }
+.mgrid .mv.bad { color: var(--bad); }

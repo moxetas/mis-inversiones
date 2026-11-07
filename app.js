@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '28';
+const APP_VERSION = '29';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -336,8 +336,7 @@ function invRow({ inv, c }) {
       <span class="main"><div class="t">${esc(inv.name)}</div><div class="s">${esc(sub)}</div></span>
       <span class="end">
         <div class="num">${m(c.value)}</div>
-        <div class="s num gl ${cls(g)}">${gl}</div>
-        ${dayChange(inv)}
+        ${metrics([['P/L', gl, cls(g)], dayLine(inv)])}
       </span>
     </a>`;
 }
@@ -349,8 +348,13 @@ function byPlatform(rows) {
     if (r.c.closed || !r.b) continue;
     const name = (r.inv.platform || '').trim() || 'Sin plataforma';
     const u = toBase(r.c.unrealized, r.cur), k = toBase(r.c.cost, r.cur);
-    const g = map.get(name) || { name, value: 0, un: 0, cost: 0, n: 0 };
+    const g = map.get(name) || { name, value: 0, un: 0, cost: 0, n: 0, day: 0, dayBase: 0, hasDay: false };
     g.value += r.b.value; g.n++;
+    // Lo que ha subido o bajado hoy todo lo que tienes en ese bróker o billetera
+    if (hasDay(r.inv) && r.inv.chgAbs != null) {
+      const d = toBase(r.c.held * r.inv.chgAbs, r.cur);
+      if (d != null) { g.day += d; g.dayBase += r.b.value - d; g.hasDay = true; }
+    }
     if (u != null && k != null) { g.un += u; g.cost += k; }
     map.set(name, g);
   }
@@ -381,21 +385,30 @@ function platformRow(g, active) {
       ${platformBadge(g.name)}
       <span class="main"><div class="t">${esc(g.name)}</div><div class="s">${g.n === 1 ? '1 inversión' : g.n + ' inversiones'} · ${money(g.value)}</div></span>
       <span class="end">
-        <div class="num gl ${cls(g.un)}">${signed(g.un)}</div>
-        <div class="s num gl ${cls(g.un)}">${g.cost > 0 ? signed(g.un / g.cost, pct) : ''}</div>
+        ${metrics([
+          ['P/L', signed(g.un) + (g.cost > 0 ? ' · ' + signed(g.un / g.cost, pct) : ''), cls(g.un)],
+          g.hasDay ? ['24h', sgn(g.day) + money(Math.abs(g.day)) + (g.dayBase > 0 ? ' · ' + pct2(g.day / g.dayBase * 100) : ''), dcls(g.day)] : null,
+        ])}
       </span>
     </button>`;
 }
 let listPlatform = null;   // bróker o billetera que se está mirando en Inversiones (null = todos)
 
 // Variación del precio hoy (de TradingView), por participación y en %. Solo si es de hoy.
-function dayChange(inv) {
-  if (typeof inv.chg !== 'number' || !inv.chgAt || new Date(inv.chgAt).toDateString() !== new Date().toDateString()) return '';
-  const cur = invCur(inv), a = inv.chgAbs;
-  const sg = (x) => (x > 0 ? '+' : x < 0 ? '−' : '');
-  const pc = sg(inv.chg) + nf({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(inv.chg)) + ' %';
-  const ab = a != null ? sg(a) + price(Math.abs(a), cur) + ' · ' : '';
-  return `<div class="s num day ${inv.chg > 0 ? 'good' : inv.chg < 0 ? 'bad' : ''}">${inv.type === 'cripto' ? '24 h' : 'Hoy'} ${ab}${pc}</div>`;
+function hasDay(inv) { return typeof inv.chg === 'number' && inv.chgAt && new Date(inv.chgAt).toDateString() === new Date().toDateString(); }
+const sgn = (x) => (x > 0 ? '+' : x < 0 ? '−' : '');
+const pct2 = (x) => sgn(x) + nf({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(x)) + ' %';
+const dcls = (x) => (x > 0 ? 'good' : x < 0 ? 'bad' : '');
+// Línea «24h» de una inversión: variación del precio de cada participación, en dinero y en %
+function dayLine(inv) {
+  if (!hasDay(inv)) return null;
+  const a = inv.chgAbs;
+  return ['24h', (a != null ? sgn(a) + price(Math.abs(a), invCur(inv)) + ' · ' : '') + pct2(inv.chg), dcls(inv.chg)];
+}
+// Etiquetas (P/L, 24h) y cifras en dos columnas, para que queden alineadas
+function metrics(lines) {
+  const ok = lines.filter((l) => l && l[1]);
+  return ok.length ? `<div class="mgrid">${ok.map(([k, v, c]) => `<span class="mk">${k}</span><span class="mv num ${c}">${v}</span>`).join('')}</div>` : '';
 }
 
 // En Inversiones los precios se refrescan solos cada minuto mientras miras la pantalla
