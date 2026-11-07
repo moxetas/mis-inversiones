@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '26';
+const APP_VERSION = '27';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -470,7 +470,7 @@ function renderDetail(id) {
       <a class="btn secondary" href="#/inv/${id}/valor">${unitsMode ? 'Actualizar precio' : 'Actualizar valor'}</a>
     </div>
 
-    ${chartSymbol(inv) ? `<h2 class="section-title">Gráfico</h2>
+    ${chartSymbol(inv) ? `<div class="section-head"><h2 class="section-title">Gráfico</h2><button type="button" class="btn small secondary" id="chart-full">⛶ Pantalla completa</button></div>
     <div class="card tv-chart-card"><div class="tv-chart" id="tv-chart"></div></div>` : ''}
 
     ${inv.notes ? `<p class="note">${esc(inv.notes)}</p>` : ''}
@@ -487,9 +487,11 @@ function chartSymbol(inv) {
   if (inv.mode !== 'units') return null;
   return inv.priceSource || tvCandidates(inv)[0] || null;
 }
-function drawTvChart(inv) {
-  const box = $('#tv-chart');
+function drawTvChart(inv, target) {
+  const box = target || $('#tv-chart');
   if (!box) return;
+  const full = $('#chart-full');
+  if (full && !target) full.onclick = () => openFullChart(inv);
   if (!navigator.onLine) { box.innerHTML = '<div class="empty"><p>Sin conexión: el gráfico se verá cuando tengas internet.</p></div>'; return; }
   const dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
   box.innerHTML = '<div class="tradingview-widget-container" style="height:100%;width:100%"><div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div></div>';
@@ -498,12 +500,35 @@ function drawTvChart(inv) {
   sc.async = true;
   sc.text = JSON.stringify({
     autosize: true, symbol: chartSymbol(inv), interval: 'D', timezone: 'Europe/Madrid', theme: dark ? 'dark' : 'light',
-    style: '1', locale: 'es', allow_symbol_change: false, hide_side_toolbar: true, save_image: false, calendar: false,
+    style: '1', locale: 'es', allow_symbol_change: false, hide_side_toolbar: !target, save_image: false, calendar: false,
     withdateranges: true, support_host: 'https://www.tradingview.com',
   });
   sc.onerror = () => { box.innerHTML = '<div class="empty"><p>No se ha podido cargar el gráfico de TradingView. Prueba otra vez en un rato.</p></div>'; };
   box.firstChild.appendChild(sc);
 }
+
+// Pantalla completa: el gráfico ocupa toda la pantalla (en el iPhone, Safari solo deja pantalla completa de verdad a los vídeos)
+function openFullChart(inv) {
+  closeFullChart();
+  const ov = document.createElement('div');
+  ov.className = 'chart-full';
+  ov.id = 'chart-full-ov';
+  ov.innerHTML = `<div class="chart-full-bar"><span>${esc(inv.name)}</span><button type="button" class="icon-btn" id="chart-close" aria-label="Cerrar">✕</button></div><div class="chart-full-body" id="chart-full-body"></div>`;
+  document.body.appendChild(ov);
+  document.documentElement.classList.add('no-scroll');
+  $('#chart-close').addEventListener('click', closeFullChart);
+  drawTvChart(inv, $('#chart-full-body'));
+  history.pushState({ chartFull: true }, '');
+}
+function closeFullChart() {
+  const ov = $('#chart-full-ov');
+  if (!ov) return;
+  ov.remove();
+  document.documentElement.classList.remove('no-scroll');
+  if (history.state && history.state.chartFull) history.back();
+}
+// El botón atrás (o deslizar) cierra la pantalla completa en vez de salir de la ficha
+window.addEventListener('popstate', () => { const ov = $('#chart-full-ov'); if (ov) { ov.remove(); document.documentElement.classList.remove('no-scroll'); } });
 
 function moveRow(m, showInv) {
   const inv = invById(m.invId);
