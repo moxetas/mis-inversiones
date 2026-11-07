@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '23';
+const APP_VERSION = '24';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -355,11 +355,16 @@ function byPlatform(rows) {
   }
   return [...map.values()].sort((a, b) => b.value - a.value);
 }
-// Logos de brókeres y billeteras (Interactive Brokers, Kraken y BingX: de TradingView; Trezor: de Simple Icons)
+// Logos de brókeres y billeteras (Interactive Brokers, Kraken y BingX: de TradingView; Trezor: de Simple Icons;
+// Ledger, Trading 212 y Trade Republic: de los iconos de sus apps)
 const PLATFORM_LOGO = {
   caixabank: 'icons/logos/caixabank.png',
   'interactive brokers': 'icons/logos/plat-interactive-brokers.svg', ibkr: 'icons/logos/plat-interactive-brokers.svg',
   kraken: 'icons/logos/plat-kraken.svg', bingx: 'icons/logos/plat-bingx.svg', trezor: 'icons/logos/plat-trezor.svg',
+  // Recortados de los iconos de sus apps
+  ledger: 'icons/logos/plat-ledger.png', 'ledger wallet': 'icons/logos/plat-ledger.png',
+  'trading 212': 'icons/logos/plat-trading-212.png', trading212: 'icons/logos/plat-trading-212.png', t212: 'icons/logos/plat-trading-212.png',
+  'trade republic': 'icons/logos/plat-trade-republic.png',
 };
 function platformBadge(name) {
   const logo = PLATFORM_LOGO[normName(name).trim()];
