@@ -358,3 +358,7 @@ details.card summary { cursor: pointer; font-weight: 600; }
 .filter-bar .btn.small { min-height: 36px; padding: 6px 14px; font-size: 14px; }
 .plat-legend .gl { font-size: 13px; font-weight: 600; }
 .card .more { display: inline-block; margin-top: 10px; color: var(--accent); font-weight: 600; font-size: 14px; }
+
+/* ---------- Gráfico de TradingView ---------- */
+.tv-chart-card { padding: 0; overflow: hidden; }
+.tv-chart { height: 440px; width: 100%; }

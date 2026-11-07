@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '25';
+const APP_VERSION = '26';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -470,11 +470,39 @@ function renderDetail(id) {
       <a class="btn secondary" href="#/inv/${id}/valor">${unitsMode ? 'Actualizar precio' : 'Actualizar valor'}</a>
     </div>
 
+    ${chartSymbol(inv) ? `<h2 class="section-title">Gráfico</h2>
+    <div class="card tv-chart-card"><div class="tv-chart" id="tv-chart"></div></div>` : ''}
+
     ${inv.notes ? `<p class="note">${esc(inv.notes)}</p>` : ''}
 
     <h2 class="section-title">Movimientos</h2>
     ${ms.length ? `<div class="list">${ms.map((m) => moveRow(m, false)).join('')}</div>`
       : `<div class="card empty"><p>Todavía no hay movimientos. Apunta la primera ${unitsMode ? 'compra' : 'aportación'}.</p></div>`}`;
+  drawTvChart(inv);
+}
+
+// ---------- Gráfico de velas de TradingView dentro de la app ----------
+// Es el gráfico oficial que TradingView deja poner en otras webs: se ve aquí mismo, sin abrir TradingView.
+function chartSymbol(inv) {
+  if (inv.mode !== 'units') return null;
+  return inv.priceSource || tvCandidates(inv)[0] || null;
+}
+function drawTvChart(inv) {
+  const box = $('#tv-chart');
+  if (!box) return;
+  if (!navigator.onLine) { box.innerHTML = '<div class="empty"><p>Sin conexión: el gráfico se verá cuando tengas internet.</p></div>'; return; }
+  const dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  box.innerHTML = '<div class="tradingview-widget-container" style="height:100%;width:100%"><div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div></div>';
+  const sc = document.createElement('script');
+  sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+  sc.async = true;
+  sc.text = JSON.stringify({
+    autosize: true, symbol: chartSymbol(inv), interval: 'D', timezone: 'Europe/Madrid', theme: dark ? 'dark' : 'light',
+    style: '1', locale: 'es', allow_symbol_change: false, hide_side_toolbar: true, save_image: false, calendar: false,
+    withdateranges: true, support_host: 'https://www.tradingview.com',
+  });
+  sc.onerror = () => { box.innerHTML = '<div class="empty"><p>No se ha podido cargar el gráfico de TradingView. Prueba otra vez en un rato.</p></div>'; };
+  box.firstChild.appendChild(sc);
 }
 
 function moveRow(m, showInv) {
