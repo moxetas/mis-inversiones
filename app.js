@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '35';
+const APP_VERSION = '36';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -1668,6 +1668,20 @@ function render() {
 }
 
 window.addEventListener('hashchange', render);
+// iPhone: al cerrar el teclado, a veces deja las pestañas a media pantalla. Se recolocan solas.
+function fixViewport() {
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+  const y = window.scrollY;
+  window.scrollTo(0, y + 1); window.scrollTo(0, y);
+}
+document.addEventListener('focusout', () => setTimeout(fixViewport, 120));
+if (window.visualViewport) {
+  let vvH = visualViewport.height;
+  visualViewport.addEventListener('resize', () => { if (visualViewport.height > vvH + 100) setTimeout(fixViewport, 60); vvH = visualViewport.height; });
+}
+window.addEventListener('pageshow', () => setTimeout(fixViewport, 60));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(fixViewport, 60); });
 // Al girar el móvil o cambiar el tamaño, se vuelve a dibujar la gráfica
 let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if ($('#chart')) drawChart(); }, 150); });
