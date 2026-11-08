@@ -19,6 +19,8 @@ Tus datos se guardan **solo en tu teléfono**: no se suben a ningún sitio.
 - La ganancia total es: valor actual + dinero retirado + dividendos − dinero aportado (las comisiones cuentan). El precio medio usa el método de coste medio.
 - Conviene hacer una **copia de seguridad** de vez en cuando desde Ajustes, por si cambias de móvil o borras Safari.
 - Para probarla sin apuntar nada, en la pantalla inicial está **Probar con datos de ejemplo**.
+- La primera vez se abre la guía **Cómo funciona** (`#/guia`), que se reabre desde Ajustes. La guía para compartir está en [`guia.pdf`](guia.pdf).
+- **Desde una captura o foto, con tu IA** (en Importar): la app copia unas instrucciones, la persona adjunta la captura o el PDF en su propia app de IA (ChatGPT, Claude, Gemini…) y pega aquí la respuesta (JSON de movimientos, o una tabla/CSV). Pasa por la misma pantalla de revisión que los extractos. La app no envía nada a ningún sitio.
 
 ## Instalarla en el iPhone
 
@@ -47,6 +49,7 @@ Es una web normal (HTML, CSS y JavaScript) sin librerías ni servidor:
 | `styles.css` | Diseño, con modo claro y oscuro. |
 | `app.js` | Pantallas, cálculos y datos guardados en el teléfono. |
 | `importar.js` | Lee los extractos de los brókeres (PDF con pdf.js, o CSV) y los convierte en movimientos. |
+| `guia.js` | Guía de primeros pasos y «Desde una captura o foto, con tu IA». |
 | `vendor/pdfjs/` | pdf.js de Mozilla (licencia Apache-2.0), para leer los PDF dentro del teléfono. |
 | `sw.js` | Guarda la app en el teléfono para que abra sin cobertura. |
 | `manifest.webmanifest`, `icons/` | Nombre e icono al instalarla. |

@@ -374,14 +374,16 @@ function renderImport() {
         <input type="file" id="imp-file" accept=".pdf,.csv,.txt,application/pdf,text/csv" hidden>
         <p class="note" style="margin:12px 0 0">El archivo se lee en tu teléfono y no se envía a ningún sitio.</p>
       </section>
+      ${aiImportCard()}
       <h2 class="section-title">Consejos</h2>
       <div class="card note-card">
         <p><b>Trading 212:</b> su PDF no deja leer los números. Descarga el CSV: en la app de Trading 212, <i>Historial → icono de descarga → Exportar historial</i>, elige las fechas y guárdalo en Archivos.</p>
         <p><b>Otros brókeres</b> (Interactive Brokers, DEGIRO, MyInvestor, bancos…): sirve el extracto de operaciones en PDF o, mejor aún, en CSV.</p>
-        <p style="margin-bottom:0">Si un archivo no se lee bien, pásaselo a Claude para que la app aprenda ese formato.</p>
+        <p style="margin-bottom:0">Si un archivo no se lee bien, haz una captura y usa «Desde una captura o foto, con tu IA».</p>
       </div>`;
     $('#imp-pick').addEventListener('click', () => $('#imp-file').click());
     $('#imp-file').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) readStatement(f); });
+    bindAiImport();
     return;
   }
   const d = importDraft;
@@ -433,7 +435,7 @@ async function readStatement(file) {
       text = rows.map((r) => r.map((c) => c.s).join(' | ')).join('\n');
     }
     const { moves, skipped } = rowsToMoves(rows, text, !isPdf);
-    if (!moves.length) throw new Error('No he encontrado compras, ventas ni dividendos en este archivo. Si es un extracto de operaciones, pásaselo a Claude para que la app aprenda a leer ese formato.');
+    if (!moves.length) throw new Error('No he encontrado compras, ventas ni dividendos en este archivo. Prueba con «Desde una captura o foto, con tu IA», más abajo en esta pantalla.');
     importDraft = buildDraft(moves, skipped, detectBroker(text + ' ' + file.name), file.name);
     renderImport();
   } catch (err) {

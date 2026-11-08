@@ -1,6 +1,6 @@
 // Guarda la app en el teléfono para que abra aunque no haya cobertura.
 // Cambia el número de CACHE cada vez que se publique una versión nueva.
-const CACHE = 'inversiones-v36';
+const CACHE = 'inversiones-v37';
 const LOGOS = 'logos-v1';
 const FILES = [
   './',
@@ -10,6 +10,7 @@ const FILES = [
   'importar.js',
   'grupo.js',
   'retos.js',
+  'guia.js',
   'app.js',
   'vendor/supabase/supabase.js',
   'manifest.webmanifest',

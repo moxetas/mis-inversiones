@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '36';
+const APP_VERSION = '37';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -258,6 +258,8 @@ function renderHome() {
         <a class="btn secondary" href="#/anadir">Pegar o importar mis inversiones</a>
         <p></p>
         <button class="btn secondary" type="button" id="demo">Probar con datos de ejemplo</button>
+        <p></p>
+        <a class="btn secondary" href="#/guia">❓ Cómo funciona</a>
       </div>`;
     $('#demo').addEventListener('click', loadDemo);
     return;
@@ -873,7 +875,7 @@ function renderMoves() {
   if (!state.moves.length) {
     view.innerHTML = `<div class="card empty"><p>Aún no hay movimientos.</p>${state.investments.length
       ? '<a class="btn" href="#/mov/nuevo">Apuntar un movimiento</a>' : '<a class="btn" href="#/inv/nueva">Añadir una inversión</a>'}
-      <p></p><a class="btn secondary" href="#/importar">Importar extracto del bróker (PDF o CSV)</a></div>`;
+      <p></p><a class="btn secondary" href="#/importar">Importar extracto (PDF, CSV) o captura</a></div>`;
     return;
   }
   const years = [...new Set(state.moves.map((m) => m.date.slice(0, 4)))].sort().reverse();
@@ -906,7 +908,7 @@ function renderMoves() {
 
   view.innerHTML = `
     ${chartCard()}
-    <a class="btn secondary" href="#/importar" style="margin-bottom:16px">Importar extracto del bróker (PDF o CSV)</a>
+    <a class="btn secondary" href="#/importar" style="margin-bottom:16px">Importar extracto (PDF, CSV) o captura</a>
     <div class="chips" role="group" aria-label="Año">
       <button type="button" data-y="all" aria-pressed="${moveYear === 'all'}">Todos</button>
       ${years.map((y) => `<button type="button" data-y="${y}" aria-pressed="${moveYear === y}">${y}</button>`).join('')}
@@ -1200,6 +1202,11 @@ function renderSettings() {
     <a class="card look-link" href="#/ajustes/aspecto">
       <span class="look-ic" aria-hidden="true">🎨</span>
       <span><b>Personalizar</b><br><span class="s">Colores, modo oscuro y fondo de pantalla</span></span>
+      <span class="chev" aria-hidden="true">›</span>
+    </a>
+    <a class="card look-link" href="#/guia">
+      <span class="look-ic" aria-hidden="true">❓</span>
+      <span><b>Cómo funciona</b><br><span class="s">Guía rápida y guía en PDF para compartir</span></span>
       <span class="chev" aria-hidden="true">›</span>
     </a>
     <section class="card form">
@@ -1656,6 +1663,7 @@ function render() {
   else if (p[0] === 'grupo') renderGroup();
   else if (p[0] === 'anadir') renderAdd();
   else if (p[0] === 'importar') renderImport();
+  else if (p[0] === 'guia') renderGuide();
   else if (p[0] === 'inv' && p[1] === 'nueva') renderInvForm(null);
   else if (p[0] === 'inv' && p[2] === 'editar') renderInvForm(p[1]);
   else if (p[0] === 'inv' && p[2] === 'valor') renderValueForm(p[1]);
@@ -1685,6 +1693,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) setT
 // Al girar el móvil o cambiar el tamaño, se vuelve a dibujar la gráfica
 let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if ($('#chart')) drawChart(); }, 150); });
+guiaPrimeraVez();
 render();
 setTimeout(autoUpdatePrices, 600);
 setTimeout(() => autoResolve(false), 1500);

@@ -501,3 +501,10 @@ button.row:first-child { border-top: 0; }
 .look-link { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; color: inherit; text-decoration: none; }
 .look-link .s { color: var(--muted); font-size: 14px; }
 .look-ic { width: 40px; height: 40px; display: grid; place-items: center; font-size: 22px; border-radius: 12px; background: var(--accent-soft); }
+
+/* Guía y «Desde una captura» */
+.guia-pasos { list-style: none; counter-reset: paso; padding: 16px; margin: 0 0 16px; display: grid; gap: 14px; }
+.card.form .guia-pasos { padding: 0; margin: 0; }
+.guia-pasos li { display: grid; gap: 4px; }
+.guia-pasos li span { color: var(--muted); font-size: 15px; line-height: 1.4; }
+.guia-pasos li .btn { margin-top: 4px; }
