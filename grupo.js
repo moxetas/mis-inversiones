@@ -1,13 +1,13 @@
 'use strict';
 
-// Grupo: ranking y chat entre amigos (Supabase). Solo se comparte el apodo, la rentabilidad (y los euros si
-// cada uno quiere) y los mensajes del chat. Las inversiones nunca salen del teléfono.
+// Grupo: ranking y retos entre amigos (Supabase). Solo se comparte el apodo y la rentabilidad (y los euros si
+// cada uno quiere). Las inversiones nunca salen del teléfono.
 // Las reglas de quién puede leer y escribir qué están en la base de datos (supabase/esquema.sql).
 
 const SB_URL = 'https://iestckrmlfycbewswazl.supabase.co';
 const SB_KEY = 'sb_publishable_Ot0u7T0PjjCkeKXmMk4Y0Q_KN1j5bYA';   // clave pública: va en la app a propósito
 
-let sb = null, sbLoading = null, groupTab = 'ranking', groupChannel = null, chatMsgs = [], groupMembers = [], myId = null;
+let sb = null, sbLoading = null, groupTab = 'ranking', groupChannel = null, groupMembers = [], myId = null;
 
 function loadSupabase() {
   if (sb) return Promise.resolve(sb);
@@ -65,7 +65,7 @@ function renderGroup() {
     view.innerHTML = `
       <section class="card">
         <h2>Compite con tus amigos</h2>
-        <p style="margin-top:0">Crea un grupo o únete al de un amigo para ver quién va ganando y hablar en el chat.</p>
+        <p style="margin-top:0">Crea un grupo o únete al de un amigo para ver quién va ganando y competir en retos.</p>
         <p class="note" style="margin:0">Solo se comparte tu <b>apodo</b> y tu <b>rentabilidad en %</b> (y tus euros si tú quieres). Nadie ve tus inversiones.</p>
       </section>
       <section class="card form">
@@ -108,9 +108,7 @@ function renderGroup() {
       <button class="btn small secondary" type="button" id="g-share">Invitar</button>
     </section>
     <div class="seg" style="margin-bottom:14px">
-      <label><input type="radio" name="gt" value="ranking" ${groupTab === 'ranking' ? 'checked' : ''}><span>Ranking</span></label>
-      <label><input type="radio" name="gt" value="chat" ${groupTab === 'chat' ? 'checked' : ''}><span>Chat</span></label>
-      <label><input type="radio" name="gt" value="retos" ${groupTab === 'retos' ? 'checked' : ''}><span>Retos</span></label>
+      <label><input type="radio" name="gt" value="ranking" ${groupTab === 'ranking' ? 'checked' : ''}><span>Ranking</span></label>      <label><input type="radio" name="gt" value="retos" ${groupTab === 'retos' ? 'checked' : ''}><span>Retos</span></label>
     </div>
     <div id="g-body"><div class="card empty"><p>Cargando…</p></div></div>`;
   for (const r of view.querySelectorAll('[name=gt]')) r.addEventListener('change', () => { groupTab = r.value; renderGroupBody(); });
@@ -122,15 +120,12 @@ function renderGroup() {
   startGroupLive().then(renderGroupBody).catch((e) => { const b = $('#g-body'); if (!b) return toast(groupErr(e)); b.innerHTML = `<div class="card empty"><p>${esc(groupErr(e))}</p></div>`; });
 }
 
-// Carga ranking y chat, y se suscribe a los cambios en directo
+// Carga el ranking y se suscribe a los cambios en directo
 async function startGroupLive() {
   const g = state.group;
   await loadSupabase();
   await publishStats(false);
-  const [m, c] = await Promise.all([
-    sb.from('members').select('user_id,nickname,pct,gain,show_gain,updated_at').eq('group_id', g.id),
-    sb.from('messages').select('id,user_id,nickname,body,created_at').eq('group_id', g.id).order('created_at', { ascending: false }).limit(100),
-  ]);
+  const m = await sb.from('members').select('user_id,nickname,pct,gain,show_gain,updated_at').eq('group_id', g.id);
   if (m.error) throw m.error;
   if (!m.data.some((x) => x.user_id === myId)) {
     // Ya no soy miembro (por ejemplo, en un móvil nuevo): hay que volver a unirse con el código
@@ -138,13 +133,9 @@ async function startGroupLive() {
     const inp = $('#g-code'); if (inp) inp.value = code;
     throw new Error('Vuelve a unirte al grupo con tu código (' + code + ').');
   }
-  groupMembers = m.data; chatMsgs = (c.data || []).reverse();
+  groupMembers = m.data;
   if (groupChannel) { sb.removeChannel(groupChannel); groupChannel = null; }
   groupChannel = sb.channel('grupo-' + g.id)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'group_id=eq.' + g.id }, (p) => {
-      if (!chatMsgs.some((x) => x.id === p.new.id)) chatMsgs.push(p.new);
-      if (location.hash.startsWith('#/grupo') && groupTab === 'chat') renderChat(true);
-    })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: 'group_id=eq.' + g.id }, (p) => {
       if (p.eventType === 'DELETE') { if (!p.old || p.old.group_id !== g.id) return; groupMembers = groupMembers.filter((x) => x.user_id !== p.old.user_id); }
       else { const i = groupMembers.findIndex((x) => x.user_id === p.new.user_id); if (i >= 0) groupMembers[i] = p.new; else groupMembers.push(p.new); }
@@ -153,7 +144,7 @@ async function startGroupLive() {
     .subscribe();
 }
 
-function renderGroupBody() { if (groupTab === 'chat') renderChat(); else if (groupTab === 'retos') renderGames(); else renderRanking(); }
+function renderGroupBody() { if (groupTab === 'retos') renderGames(); else renderRanking(); }
 
 function renderRanking() {
   const b = $('#g-body'); if (!b) return;
@@ -191,33 +182,5 @@ function renderRanking() {
     if (error) { alert(groupErr(error)); return; }
     if (groupChannel) { sb.removeChannel(groupChannel); groupChannel = null; }
     state.group = null; saveState(); toast('Has salido del grupo'); renderGroup();
-  });
-}
-
-function renderChat(keepInput) {
-  const b = $('#g-body'); if (!b) return;
-  const draft = keepInput && $('#g-msg') ? $('#g-msg').value : '';
-  const hm = (iso) => new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-  const day = (iso) => new Date(iso).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-  let html = '', lastDay = '';
-  for (const m of chatMsgs) {
-    const d = day(m.created_at);
-    if (d !== lastDay) { html += `<div class="chat-day">${esc(d)}</div>`; lastDay = d; }
-    const mine = m.user_id === myId;
-    html += `<div class="msg ${mine ? 'mine' : ''}">${mine ? '' : `<div class="who">${esc(m.nickname)}</div>`}<div class="txt">${esc(m.body)}</div><div class="time">${hm(m.created_at)}</div></div>`;
-  }
-  b.innerHTML = `
-    <div class="chat" id="g-chat">${html || '<div class="empty"><p>Aún no hay mensajes. ¡Escribe el primero!</p></div>'}</div>
-    <form class="chat-form" id="g-form"><input id="g-msg" maxlength="500" autocomplete="off" placeholder="Escribe un mensaje" value="${esc(draft)}"><button class="btn" type="submit">Enviar</button></form>`;
-  const chat = $('#g-chat'); chat.scrollTop = chat.scrollHeight;
-  $('#g-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const inp = $('#g-msg'), body = inp.value.trim();
-    if (!body) return;
-    inp.value = '';
-    const { data, error } = await sb.from('messages').insert({ group_id: state.group.id, nickname: state.group.nickname, body }).select().single();
-    if (error) { inp.value = body; alert(groupErr(error)); return; }
-    if (!chatMsgs.some((x) => x.id === data.id)) chatMsgs.push(data);
-    renderChat(); $('#g-msg').focus();
   });
 }

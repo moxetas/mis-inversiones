@@ -39,7 +39,7 @@ function renderGuide() {
     ['🧾 Sus compras, ventas y dividendos', 'Con eso calcula tu precio medio, cuánto ganas o pierdes y lo que has cobrado en dividendos.'],
     ['📷 Desde captura o PDF', 'En Movimientos: sube el extracto de tu bróker, o pásale una captura a tu app de IA y pega aquí lo que te diga.'],
     ['📈 Resumen y noticias', 'El valor total, la evolución, el reparto por tipo y por bróker, y noticias de lo que tienes.'],
-    ['🏆 Grupo (opcional)', 'Ranking y chat con amigos con un código. Solo se comparte tu apodo y tu rentabilidad en %, nunca tus inversiones.'],
+    ['🏆 Grupo (opcional)', 'Ranking y retos con amigos con un código. Solo se comparte tu apodo y tu rentabilidad en %, nunca tus inversiones.'],
     ['💾 Haz copia de vez en cuando', 'En Ajustes → Guardar copia de seguridad, por si cambias de móvil o borras el navegador.'],
   ];
   view.innerHTML = `

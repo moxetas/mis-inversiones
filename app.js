@@ -1482,7 +1482,7 @@ async function updatePrices(btn, quiet, live) {
     }
     saveState();
     publishStats(false);
-    // En el chat no se redibuja (se perdería lo que estás escribiendo)
+    // En Grupo no se redibuja (se perdería lo que estás escribiendo)
     if (!location.hash.startsWith('#/grupo')) { const y = window.scrollY; render(); window.scrollTo(0, y); }
     if (missing.length && !quiet) alert('Precios actualizados: ' + done.length + ' de ' + invs.length + '.\n\nSin precio de TradingView: ' + missing.join(', ') + '.\n\nPuedes poner su símbolo de TradingView en Editar, o el precio a mano.');
     else if (done.length && !live) toast('Precios actualizados (' + done.length + ')');

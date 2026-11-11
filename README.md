@@ -56,11 +56,11 @@ Es una web normal (HTML, CSS y JavaScript) sin librerías ni servidor:
 
 Para probarla en un ordenador basta con servir la carpeta, por ejemplo con `python3 -m http.server`, y abrir `http://localhost:8000`.
 
-## Grupo (ranking y chat con amigos)
+## Grupo (ranking y retos con amigos)
 
-La pestaña **Grupo** permite crear un grupo o unirse con un código (`MX-XXXXXX`), ver un ranking por rentabilidad en %
-y hablar en un chat en tiempo real. Solo se envía el apodo, la rentabilidad total (y los euros si cada uno lo activa)
-y los mensajes; las inversiones nunca salen del teléfono. Funciona con Supabase (cuenta anónima, sin registro).
+La pestaña **Grupo** permite crear un grupo o unirse con un código (`MX-XXXXXX`) y ver un ranking por rentabilidad
+en %, en tiempo real. Solo se envía el apodo y la rentabilidad total (y los euros si cada uno lo activa); las
+inversiones nunca salen del teléfono. Funciona con Supabase (cuenta anónima, sin registro).
 Las tablas y reglas de seguridad están en `supabase/esquema.sql`. La librería `vendor/supabase/supabase.js` es
 @supabase/supabase-js 2.118.0 (licencia MIT, ver `vendor/supabase/LICENSE`).
 
