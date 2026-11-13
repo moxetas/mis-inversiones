@@ -347,6 +347,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tabs a[aria-current="page"] { color: var(--accent); }
+/* Solo iconos: el nombre queda oculto pero lo sigue leyendo VoiceOver */
+.tabs a { align-items: center; min-height: 52px; }
+.tabs a span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tabs .ic { width: 28px; height: 28px; }
 
 /* ---------- Aviso ---------- */
 
