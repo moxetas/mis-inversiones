@@ -69,3 +69,13 @@ Las tablas y reglas de seguridad están en `supabase/esquema.sql`. La librería 
 Dentro del grupo, la pestaña **Retos** permite crear un reto con fecha de inicio y duración. Hasta que empieza, cada uno
 elige de 1 a 10 activos (buscados en TradingView o de su cartera) y nadie ve los de los demás. Gana la mayor subida
 media en %. Los precios de inicio y final los guarda el servidor cada minuto con pg_cron + pg_net (`supabase/retos.sql`).
+
+## Seguimiento, carteras de los hijos y noticias de cualquier activo
+
+- **Seguimiento**: activos en el punto de mira (sin comprarlos), con logo, precio en directo, gráfico y noticias.
+- **Hijos**: en Inversiones, «＋ Hijo» crea una cartera aparte; sus inversiones no se suman a las tuyas
+  (ni al Resumen, ni a la gráfica, ni al ranking del grupo). En el Resumen salen en una tarjeta aparte.
+- **Noticias de activos fuera de la lista fija**: la app apunta su nombre y símbolo en Supabase
+  (`supabase/noticias.sql`) y la tarea de noticias los busca también cada hora.
+- La gráfica de Movimientos empieza el 1 de enero de 2027.
+- Ajustes está en la rueda de arriba a la izquierda.

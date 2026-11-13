@@ -186,9 +186,57 @@ def items(root, must):
                     'published': published, 'url': link})
     return sorted(out, key=lambda x: -x['published'])[:PER_FEED]
 
+# Activos extra que la gente sigue o tiene y no están en CATALOG (los apunta la app en Supabase; solo nombre y símbolo)
+SB_URL = 'https://iestckrmlfycbewswazl.supabase.co'
+SB_KEY = 'sb_publishable_Ot0u7T0PjjCkeKXmMk4Y0Q_KN1j5bYA'   # clave pública, la misma que lleva la app
+MAX_EXTRA = 100
+CRIPTO_EX = {'COINBASE', 'KRAKEN', 'BITSTAMP', 'BINANCE', 'BITFINEX', 'BYBIT', 'OKX'}
+GENERICAS = {'banco', 'grupo', 'group', 'compania', 'compañía', 'the', 'first', 'general', 'american', 'international',
+             'global', 'united', 'national', 'royal', 'new', 'china', 'industrias', 'iShares'.lower(), 'vanguard', 'amundi', 'xtrackers'}
+SUFIJOS = re.compile(r'(,?\s+(a/s(\s+class [a-c])?|inc\.?|incorporated|corp\.?|corporation|co\.?|ltd\.?|limited|plc|s\.?a\.?|s\.?p\.?a\.?|se|n\.?v\.?|ag|'
+                     r'holdings?|group|class [a-c]|ordinary shares?|adr|reg\.?|registered shares?)|\s*\(.*?\)|\s*/.*)$', re.I)
+
+def limpiar(nombre):
+    n = nombre.strip()
+    for _ in range(4):
+        m = SUFIJOS.sub('', n).strip(' ,.')
+        if m == n: break
+        n = m
+    return n
+
+def extras():
+    url = SB_URL + '/rest/v1/news_topics?select=key,name,isin,ticker&order=last_seen.desc&limit=' + str(MAX_EXTRA * 2)
+    req = urllib.request.Request(url, headers={'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            rows = json.load(r)
+    except Exception as e:
+        print('Sin activos extra:', e)
+        return []
+    isins = {i for c in CATALOG for i in c['match']['isin']}
+    ticks = {t.upper() for c in CATALOG for t in c['match']['tickers']}
+    names = {n for c in CATALOG for n in c['match']['names']}
+    out = []
+    for t in rows:
+        nombre = limpiar(t.get('name') or '')
+        ticker = (t.get('ticker') or '').upper()
+        if len(nombre) < 3 or (t.get('isin') and t['isin'] in isins) or ticker in ticks or nombre.lower() in names:
+            continue
+        palabras = nombre.split()
+        corto = palabras[0] if len(palabras) > 1 and len(palabras[0]) >= 5 and palabras[0].lower() not in GENERICAS else nombre
+        exchange = t['key'].split(':')[0]
+        q = (f'"{corto}" (cripto OR criptomoneda OR precio) when:7d' if exchange in CRIPTO_EX else f'"{corto}" {MERCADO} when:7d')
+        e = empresa(t['key'], corto, isin=[t['isin']] if t.get('isin') else [], tickers=[ticker] if ticker else [], q=q)
+        e['match']['names'] = sorted({nombre.lower(), corto.lower()})
+        out.append(e)
+        if len(out) >= MAX_EXTRA: break
+    print(f'Activos extra: {len(out)}')
+    return out
+
 def main(out):
     feeds, errors = {}, []
-    for c in CATALOG:
+    lista = CATALOG + extras()
+    for c in lista:
         try:
             feeds[c['key']] = items(fetch(c['q']), c['must'])
             first = feeds[c['key']][0]['title'][:80] if feeds[c['key']] else '—'
@@ -199,7 +247,7 @@ def main(out):
         time.sleep(1.2)
     if not any(feeds.values()):
         sys.exit('No se ha podido descargar ninguna noticia: ' + '; '.join(errors))
-    catalog = [{'key': c['key'], 'label': c['label'], 'match': c['match']} for c in CATALOG]
+    catalog = [{'key': c['key'], 'label': c['label'], 'match': c['match']} for c in lista]
     data = {'updated': int(time.time()), 'source': 'Google Noticias', 'catalog': catalog, 'feeds': feeds, 'errors': errors}
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, separators=(',', ':'))

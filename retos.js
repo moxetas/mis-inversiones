@@ -184,6 +184,17 @@ async function renderGamePick(game) {
   if (left < 30 * 60000) gameTimer = setTimeout(() => { if (location.hash.includes(game.id)) renderGame(game.id); }, left + 1500);
 }
 
+// Quita «Inc.», «Class A», «S.A.»… del nombre de la empresa
+function cleanName(n) {
+  let x = String(n || '').trim();
+  for (let i = 0; i < 4; i++) {
+    const y = x.replace(/(,?\s+(a\/s(\s+class [a-c])?|inc\.?|incorporated|corp\.?|corporation|co\.?|ltd\.?|limited|plc|s\.?a\.?|s\.?p\.?a\.?|se|n\.?v\.?|ag|holdings?|class [a-c]|ordinary shares?|adr|reg\.?|registered shares?)|\s*\(.*?\))$/i, '').replace(/[\s,.]+$/, '');
+    if (y === x) break;
+    x = y;
+  }
+  return x || String(n || '');
+}
+
 // Buscar activos en TradingView (acciones y ETF por nombre, ticker o ISIN; criptomonedas)
 async function tvSearch(market, filter, sort, n) {
   const body = JSON.stringify({ filter, columns: ['name', 'description', 'exchange', 'currency', 'logoid', 'base_currency_logoid', 'close', 'type'],
@@ -193,7 +204,7 @@ async function tvSearch(market, filter, sort, n) {
   const json = await res.json();
   return (json.data || []).map((r) => {
     const [name, description, exchange, currency, logoid, baseLogo, close, type] = r.d;
-    return { s: r.s, n: type === 'spot' ? (description || name).split(' / ')[0] : description || name, l: logoid || baseLogo || null, k: type === 'fund' ? 'fondo' : type === 'spot' ? 'cripto' : 'accion', c: (currency || '').toUpperCase(), p: close };
+    return { s: r.s, n: type === 'spot' ? (description || name).split(' / ')[0] : cleanName(description || name), l: logoid || baseLogo || null, k: type === 'fund' ? 'fondo' : type === 'spot' ? 'cripto' : 'accion', c: (currency || '').toUpperCase(), p: close };
   });
 }
 async function searchAssets(q) {

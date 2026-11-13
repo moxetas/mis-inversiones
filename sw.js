@@ -10,6 +10,7 @@ const FILES = [
   'importar.js',
   'grupo.js',
   'retos.js',
+  'seguimiento.js',
   'guia.js',
   'app.js',
   'vendor/supabase/supabase.js',

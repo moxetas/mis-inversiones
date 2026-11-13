@@ -480,3 +480,11 @@ button.row:first-child { border-top: 0; }
 .guia-pasos li { display: grid; gap: 4px; }
 .guia-pasos li span { color: var(--muted); font-size: 15px; line-height: 1.4; }
 .guia-pasos li .btn { margin-top: 4px; }
+.chart-wait { font-size: 44px; text-align: center; padding: 18px 0 8px; opacity: .8; }
+
+/* ---------- Hijos y seguimiento ---------- */
+.kid-ic { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.kid-hero .label { color: var(--muted); font-size: 15px; }
+.owner-chips .add-kid { border-style: dashed; }
+.section-title .s { font-weight: 500; font-size: 13px; color: var(--muted); }
+#gear-btn[hidden] { display: none; }

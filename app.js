@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '37';
+const APP_VERSION = '38';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -22,7 +22,7 @@ const STALE_DAYS = 30;
 // ---------- Estado guardado en el teléfono ----------
 
 function freshState() {
-  return { currency: 'EUR', rates: {}, investments: [], moves: [] };
+  return { currency: 'EUR', rates: {}, investments: [], moves: [], kids: [], watch: [] };
 }
 
 function loadState() {
@@ -98,6 +98,12 @@ function daysSince(k) { return Math.floor((fromKey(todayKey()) - fromKey(k)) / 8
 function typeOf(id) { return TYPES.find((t) => t.id === id) || TYPES[TYPES.length - 1]; }
 function typeColor(id) { return 'var(--t' + (TYPES.indexOf(typeOf(id)) + 1) + ')'; }
 function invById(id) { return state.investments.find((i) => i.id === id); }
+// Carteras de los hijos: cada inversión puede ser de un hijo (inv.owner). No se suman a las tuyas.
+function kids() { return state.kids || (state.kids = []); }
+function ownerOf(inv) { return (inv && inv.owner) || null; }
+function kidName(id) { const k = kids().find((x) => x.id === id); return k ? k.name : ''; }
+function invsOf(owner) { return state.investments.filter((i) => ownerOf(i) === (owner || null)); }
+let listOwner = null;   // cartera que se mira en Inversiones y Movimientos (null = la tuya)
 
 function kindName(kind, inv) {
   const unitsMode = inv && inv.mode === 'units';
@@ -164,9 +170,10 @@ function calc(inv) {
   };
 }
 
-function portfolio() {
+// Solo tus inversiones (sin las de tus hijos), salvo que se pida la cartera de un hijo
+function portfolio(owner) {
   const keys = ['value', 'contributed', 'withdrawn', 'income', 'gain'];
-  const rows = state.investments.map((inv) => {
+  const rows = invsOf(owner).map((inv) => {
     const c = calc(inv), cur = invCur(inv), r = rateOf(cur);
     const b = r ? Object.fromEntries(keys.map((k) => [k, c[k] / r])) : null;  // en la moneda principal
     return { inv, c, cur, b };
@@ -228,6 +235,7 @@ function setChrome({ title, tab, back, action }) {
   $('#title').textContent = title;
   document.title = title === 'Moxetas Invest' ? title : title + ' · Moxetas Invest';
   $('#back-btn').hidden = !back;
+  $('#gear-btn').hidden = !!back || tab === 'settings';
   $('#back-btn').dataset.to = back || '';
   $('#actions').innerHTML = action
     ? '<a class="icon-btn" href="' + action.href + '" aria-label="' + esc(action.label) + '">' + action.icon + '</a>'
@@ -248,8 +256,9 @@ function go(hash) { location.hash = hash; }
 
 function renderHome() {
   setChrome({ title: 'Moxetas Invest', tab: 'home', action: { href: '#/inv/nueva', label: 'Añadir inversión', icon: ICON_PLUS } });
-  if (!state.investments.length) {
+  if (!invsOf(null).length) {
     view.innerHTML = `
+      ${kidsCard()}
       <div class="card empty">
         <p><strong>Aún no has apuntado ninguna inversión.</strong></p>
         <p>Apunta cada inversión (acciones, fondos, depósitos…) y sus compras, ventas y dividendos. La app calcula cuánto vale tu cartera y cuánto ganas o pierdes.</p>
@@ -323,7 +332,8 @@ function renderHome() {
 
     <h2 class="section-title">Tus inversiones más grandes</h2>
     <div class="list">${top.map(invRow).join('')}</div>
-    <a class="btn secondary" href="#/inversiones">Ver todas</a>`;
+    <a class="btn secondary" href="#/inversiones?de=yo">Ver todas</a>
+    ${kidsCard()}`;
   bindPriceButton();
 }
 
@@ -427,12 +437,54 @@ function stopLive() { if (liveTimer) clearInterval(liveTimer); liveTimer = null;
 
 // ---------- Pantalla: Inversiones ----------
 
+// Carteras de los hijos en el Resumen: aparte, sin sumarse a la tuya
+function kidsCard() {
+  const ks = kids().filter((k) => invsOf(k.id).length);
+  if (!ks.length) return '';
+  return `
+    <h2 class="section-title">Carteras de tus hijos <span class="s">(no se suman a la tuya)</span></h2>
+    <div class="list">${ks.map((k) => {
+      const { tot } = portfolio(k.id);
+      return `<a class="row" href="#/inversiones?de=${esc(k.id)}">
+        <span class="logo ini kid-ic" style="width:40px;height:40px" aria-hidden="true">${esc(kidInitial(k.name))}</span>
+        <span class="main"><div class="t">${esc(k.name)}</div><div class="s">${invsOf(k.id).length === 1 ? '1 inversión' : invsOf(k.id).length + ' inversiones'}</div></span>
+        <span class="end"><div class="num">${money(tot.value)}</div><div class="s num ${cls(tot.gain)}">${signed(tot.gain)} · ${signed(tot.pct, pct)}</div></span></a>`;
+    }).join('')}</div>`;
+}
+function kidInitial(n) { return (n || '?').trim().charAt(0).toUpperCase(); }
+
+// Selector de cartera: la tuya o la de cada hijo
+function ownerChips() {
+  return `<div class="chips owner-chips" role="group" aria-label="Cartera">
+    <button type="button" data-owner="" aria-pressed="${!listOwner}">Mías</button>
+    ${kids().map((k) => `<button type="button" data-owner="${esc(k.id)}" aria-pressed="${listOwner === k.id}">👶 ${esc(k.name)}</button>`).join('')}
+    <button type="button" data-owner="+" class="add-kid">＋ Hijo</button>
+  </div>`;
+}
+function bindOwnerChips(rerender) {
+  for (const b of view.querySelectorAll('[data-owner]')) b.addEventListener('click', () => {
+    if (b.dataset.owner === '+') {
+      const name = (prompt('Nombre de tu hijo o hija (sus inversiones irán aparte, sin sumarse a las tuyas):') || '').trim().slice(0, 30);
+      if (!name) return;
+      const k = { id: uid(), name };
+      kids().push(k); saveState(); listOwner = k.id; listPlatform = null; rerender();
+      toast('Cartera de ' + name + ' creada');
+      return;
+    }
+    listOwner = b.dataset.owner || null; listPlatform = null; rerender();
+  });
+}
+
 function renderList() {
   if (!liveTimer) startLive();
-  setChrome({ title: 'Inversiones', tab: 'invs', action: { href: '#/inv/nueva', label: 'Añadir inversión', icon: ICON_PLUS } });
-  const { rows } = portfolio();
+  if (listOwner && !kidName(listOwner)) listOwner = null;
+  const kid = listOwner ? kidName(listOwner) : '';
+  setChrome({ title: kid ? 'Inversiones de ' + kid : 'Inversiones', tab: 'invs', action: { href: '#/inv/nueva', label: 'Añadir inversión', icon: ICON_PLUS } });
+  const { rows, tot } = portfolio(listOwner);
   if (!rows.length) {
-    view.innerHTML = `<div class="card empty"><p>Aún no hay inversiones.</p><a class="btn" href="#/inv/nueva">Añadir inversión</a></div>`;
+    view.innerHTML = `${ownerChips()}<div class="card empty"><p>${kid ? 'Aún no has apuntado inversiones de ' + esc(kid) + '. Lo que apuntes aquí va aparte y no se suma a tu cartera.' : 'Aún no hay inversiones.'}</p><a class="btn" href="#/inv/nueva">Añadir inversión${kid ? ' de ' + esc(kid) : ''}</a></div>
+      ${kid ? kidManage(kid) : ''}`;
+    bindOwnerChips(renderList); bindKidManage();
     return;
   }
   const bv = (r) => (r.b ? r.b.value : 0);
@@ -445,6 +497,12 @@ function renderList() {
   let un = 0, cost = 0;
   for (const r of open) { const u = toBase(r.c.unrealized, r.cur), k = toBase(r.c.cost, r.cur); if (u != null && k != null) { un += u; cost += k; } }
   view.innerHTML = `
+    ${ownerChips()}
+    ${kid ? `<section class="card kid-hero">
+      <div class="label">Cartera de ${esc(kid)}</div>
+      <div class="big num">${money(tot.value)}</div>
+      <div class="delta num ${cls(tot.gain)}">${arrow(tot.gain)}${signed(tot.gain)} (${signed(tot.pct, pct)}) en total</div>
+    </section>` : ''}
     ${open.length ? `<section class="card unreal">
       <div><div class="k">Ganancia o pérdida sin vender${listPlatform ? ' en ' + esc(listPlatform) : ''}</div><div class="v num ${cls(un)}">${arrow(un)}${signed(un)}</div></div>
       <div class="num pct-big ${cls(un)}">${cost > 0 ? signed(un / cost, pct) : ''}</div>
@@ -455,8 +513,9 @@ function renderList() {
     ${open.length ? `<div class="list">${open.map(invRow).join('')}</div>` : ''}
     ${closed.length ? `<h2 class="section-title">Cerradas (ya vendidas o retiradas)</h2><div class="list">${closed.map(invRow).join('')}</div>` : ''}
     <div style="margin-bottom:12px">${priceButton()}</div>
-    <a class="btn" href="#/inv/nueva">${ICON_PLUS} Añadir inversión</a>`;
-  bindPriceButton();
+    <a class="btn" href="#/inv/nueva">${ICON_PLUS} Añadir inversión${kid ? ' de ' + esc(kid) : ''}</a>
+    ${kid ? kidManage(kid) : ''}`;
+  bindPriceButton(); bindOwnerChips(renderList); bindKidManage();
   // Tocar un bróker o billetera enseña solo sus inversiones; tocarlo otra vez, todas
   for (const b of view.querySelectorAll('.plat-row')) {
     b.addEventListener('click', () => {
@@ -469,6 +528,25 @@ function renderList() {
   if (all) all.addEventListener('click', () => { listPlatform = null; renderList(); });
 }
 
+function kidManage(kid) {
+  return `<div class="btn-row" style="margin-top:12px"><button type="button" class="btn secondary" id="kid-ren">Cambiar nombre</button><button type="button" class="btn secondary" id="kid-del">Quitar a ${esc(kid)}</button></div>`;
+}
+function bindKidManage() {
+  const r = $('#kid-ren'), d = $('#kid-del');
+  if (r) r.addEventListener('click', () => {
+    const k = kids().find((x) => x.id === listOwner);
+    const n = (prompt('Nuevo nombre:', k.name) || '').trim().slice(0, 30);
+    if (n) { k.name = n; saveState(); renderList(); }
+  });
+  if (d) d.addEventListener('click', () => {
+    const k = kids().find((x) => x.id === listOwner);
+    const n = invsOf(k.id).length;
+    if (n) { alert(k.name + ' todavía tiene ' + n + ' inversiones. Bórralas o pásalas a otra cartera (en Editar) antes de quitarlo.'); return; }
+    if (!confirm('¿Quitar la cartera de ' + k.name + '?')) return;
+    state.kids = kids().filter((x) => x.id !== k.id); listOwner = null; saveState(); renderList();
+  });
+}
+
 // ---------- Pantalla: detalle de una inversión ----------
 
 function renderDetail(id) {
@@ -479,7 +557,7 @@ function renderDetail(id) {
   const ms = movesOf(id).reverse();
   const u = lastUpdate(inv);
   const unitsMode = inv.mode === 'units';
-  const sub = [typeOf(inv.type).name, inv.ticker, inv.platform].filter(Boolean).join(' · ');
+  const sub = [ownerOf(inv) ? 'Cartera de ' + kidName(ownerOf(inv)) : '', typeOf(inv.type).name, inv.ticker, inv.platform].filter(Boolean).join(' · ');
   const cur = invCur(inv), mo = (x) => money(x, cur), pr = (x) => price(x, cur);
   const inBase = cur !== state.currency ? toBase(c.value, cur) : null;
   const rate = state.rates && state.rates[cur];
@@ -604,6 +682,9 @@ function renderInvForm(id) {
     <form class="form card" id="f" novalidate>
       <label class="field"><span>Nombre</span>
         <input name="name" required maxlength="80" placeholder="Ej.: Apple, Fondo indexado MSCI World…" value="${esc(inv ? inv.name : '')}"></label>
+      ${kids().length ? `<label class="field"><span>¿De quién es?</span>
+        <select name="owner"><option value="">Mía</option>${kids().map((k) => `<option value="${esc(k.id)}" ${(inv ? ownerOf(inv) : listOwner) === k.id ? 'selected' : ''}>De ${esc(k.name)}</option>`).join('')}</select>
+        <small>Las de tus hijos van aparte y no se suman a tu cartera.</small></label>` : ''}
       <label class="field"><span>Tipo</span>
         <select name="type">${TYPES.map((x) => `<option value="${x.id}" ${x.id === t ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <label class="field"><span>Moneda</span>
@@ -653,6 +734,8 @@ function renderInvForm(id) {
       notes: f.elements.notes.value.trim(),
     };
     if (!hasMoves) data.mode = f.querySelector('[name=mode]:checked').value;
+    if (f.elements.owner) { data.owner = f.elements.owner.value || undefined; listOwner = data.owner || null; }
+    else if (!inv && listOwner) data.owner = listOwner;
     if (inv) {
       const changed = ['name', 'ticker', 'currency', 'tv'].some((k) => (inv[k] || '') !== (data[k] || ''));
       Object.assign(inv, data);
@@ -741,7 +824,7 @@ function renderMoveForm(id, params) {
     ${first ? '<p class="note">Inversión creada. Ahora apunta la primera compra o aportación (o vuelve atrás y hazlo luego).</p>' : ''}
     <form class="form card" id="f" novalidate>
       <label class="field" ${presetInv ? 'hidden' : ''}><span>Inversión</span>
-        <select name="inv">${sorted.map((i) => `<option value="${i.id}" ${i.id === invId ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
+        <select name="inv">${sorted.map((i) => `<option value="${i.id}" ${i.id === invId ? 'selected' : ''}>${esc(i.name)}${ownerOf(i) ? ' (de ' + esc(kidName(ownerOf(i))) + ')' : ''}</option>`).join('')}</select></label>
       <div class="field"><span>Qué ha pasado</span>
         <div class="seg" id="kinds"></div></div>
       <label class="field"><span>Fecha</span><input type="date" name="date" required value="${m ? m.date : todayKey()}"></label>
@@ -878,9 +961,12 @@ function renderMoves() {
       <p></p><a class="btn secondary" href="#/importar">Importar extracto (PDF, CSV) o captura</a></div>`;
     return;
   }
-  const years = [...new Set(state.moves.map((m) => m.date.slice(0, 4)))].sort().reverse();
+  if (listOwner && !kidName(listOwner)) listOwner = null;
+  const mine = (m) => ownerOf(invById(m.invId)) === listOwner;
+  const all = state.moves.filter(mine);
+  const years = [...new Set(all.map((m) => m.date.slice(0, 4)))].sort().reverse();
   if (moveYear !== 'all' && !years.includes(moveYear)) moveYear = 'all';
-  const list = state.moves.filter((m) => moveYear === 'all' || m.date.startsWith(moveYear)).sort(byDate).reverse();
+  const list = all.filter((m) => moveYear === 'all' || m.date.startsWith(moveYear)).sort(byDate).reverse();
   const sum = { buy: 0, sell: 0, income: 0 };
   for (const m of list) {
     const c = invCur(invById(m.invId));
@@ -907,7 +993,9 @@ function renderMoves() {
   if (open) html += '</div>';
 
   view.innerHTML = `
-    ${chartCard()}
+    ${kids().length ? ownerChips().replace(/<button type="button" data-owner="\+"[^]*?<\/button>/, '') : ''}
+    ${listOwner ? '' : chartCard()}
+    ${list.length ? '' : '<div class="card empty"><p>No hay movimientos en esta cartera.</p></div>'}
     <a class="btn secondary" href="#/importar" style="margin-bottom:16px">Importar extracto (PDF, CSV) o captura</a>
     <div class="chips" role="group" aria-label="Año">
       <button type="button" data-y="all" aria-pressed="${moveYear === 'all'}">Todos</button>
@@ -925,6 +1013,7 @@ function renderMoves() {
   for (const b of view.querySelectorAll('.chips[aria-label="Año"] button')) {
     b.addEventListener('click', () => { moveYear = b.dataset.y; renderMoves(); });
   }
+  bindOwnerChips(renderMoves);
   for (const b of view.querySelectorAll('.chips[aria-label="Periodo"] button')) {
     b.addEventListener('click', () => { chartPeriod = b.dataset.p; renderMoves(); });
   }
@@ -954,13 +1043,16 @@ function contributionSteps() {
   return steps;
 }
 
+// La gráfica empieza de cero el 1 de enero de 2027: lo de antes no se dibuja
+const CHART_FROM = '2027-01-01';
 function chartData() {
-  const hist = Object.entries(state.history || {}).map(([d, x]) => ({ d, t: keyMs(d), v: x.v, c: x.c })).sort((a, b) => a.t - b.t);
+  const from = keyMs(CHART_FROM);
+  const hist = Object.entries(state.history || {}).map(([d, x]) => ({ d, t: keyMs(d), v: x.v, c: x.c })).filter((x) => x.t >= from).sort((a, b) => a.t - b.t);
   const steps = contributionSteps().map((x) => ({ ...x, t: keyMs(x.d) }));
   const end = keyMs(todayKey());
   const days = PERIODS[chartPeriod];
-  const first = Math.min(...[...hist, ...steps].map((x) => x.t), end);
-  const start = days ? Math.max(end - days * DAY, Math.min(first, end - 7 * DAY)) : Math.min(first, end - 7 * DAY);
+  const first = Math.min(...[...hist, ...steps.filter((x) => x.t >= from)].map((x) => x.t), end);
+  const start = Math.max(from, days ? Math.max(end - days * DAY, Math.min(first, end - 7 * DAY)) : Math.min(first, end - 7 * DAY));
   const vals = hist.filter((x) => x.t >= start);
   // Aportado: valor al empezar el periodo y cada cambio dentro
   const cAt = (t) => { let c = 0; for (const s of steps) { if (s.t <= t) c = s.c; else break; } return c; };
@@ -969,6 +1061,14 @@ function chartData() {
 }
 
 function chartCard() {
+  if (todayKey() < CHART_FROM) {
+    return `
+    <section class="card chart-card">
+      <h2>Evolución de tu patrimonio</h2>
+      <div class="chart-wait">📈</div>
+      <p class="note" style="margin:0;text-align:center">La gráfica empieza el <b>1 de enero de 2027</b>. Desde ese día la app guardará el valor de tu cartera cada día que la abras y se irá dibujando.</p>
+    </section>`;
+  }
   const { vals, start } = chartData();
   const { tot } = portfolio();
   const last = vals[vals.length - 1], firstV = vals[0];
@@ -1090,8 +1190,7 @@ function mentionWord(inv) {
 function newsTabs() {
   const tabs = [{ id: 'mias', label: 'Mis activos' }, { id: 'bolsa', key: 'bolsa', label: 'Bolsa' }, { id: 'cripto', key: 'cripto', label: 'Cripto' }];
   if (!newsData || !newsData.catalog) return tabs;
-  for (const inv of state.investments) {
-    if (calc(inv).closed) continue;
+  for (const inv of [...state.investments.filter((i) => !calc(i).closed), ...watchList().map(watchInv)]) {
     const e = newsEntry(inv);
     const label = inv.name.replace(/\s*\(.*\)$/, '');
     if (e) { if (!tabs.some((t) => t.key === e.key)) tabs.push({ id: inv.id, key: e.key, inv, label }); }
@@ -1133,6 +1232,7 @@ async function loadNews(force) {
     if (!res.ok) throw new Error(res.status);
     newsData = Object.assign(await res.json(), { fetched: Date.now() / 1000 });
     try { localStorage.setItem('inv.newsCache', JSON.stringify(newsData)); } catch (e) { /* sin almacenamiento */ }
+    setTimeout(requestNewsTopics, 1500);
   } catch (e) {
     if (!newsData) newsData = { error: true };
   } finally {
@@ -1197,7 +1297,7 @@ function renderNews() {
 // ---------- Pantalla: Ajustes ----------
 
 function renderSettings() {
-  setChrome({ title: 'Ajustes', tab: 'settings' });
+  setChrome({ title: 'Ajustes', tab: 'settings', back: '#/' });
   view.innerHTML = `
     <a class="card look-link" href="#/ajustes/aspecto">
       <span class="look-ic" aria-hidden="true">🎨</span>
@@ -1260,7 +1360,7 @@ function renderSettings() {
     const data = await readDataFile(e.target);
     if (!data) return;
     if (!confirm('Se cambiarán los datos actuales por los de la copia (' + data.investments.length + ' inversiones, ' + data.moves.length + ' movimientos). ¿Seguir?')) return;
-    state = Object.assign(freshState(), { currency: data.currency || 'EUR', rates: data.rates || {}, investments: data.investments, moves: data.moves });
+    state = Object.assign(freshState(), { currency: data.currency || 'EUR', rates: data.rates || {}, investments: data.investments, moves: data.moves, kids: data.kids || [], watch: data.watch || [], history: data.history || {} });
     saveState();
     toast('Copia recuperada');
     renderSettings();
@@ -1654,11 +1754,13 @@ function render() {
   const params = new URLSearchParams(query || '');
   const p = path.split('/').filter(Boolean);
   if (!p.length) renderHome();
-  else if (p[0] === 'inversiones') { renderList(); if (Date.now() - (state.lastPriceUpdate || 0) > 60 * 1000) setTimeout(() => updatePrices(null, true, true), 300); }
+  else if (p[0] === 'inversiones') { if (params.get('de')) { listOwner = params.get('de') === 'yo' ? null : params.get('de'); listPlatform = null; } renderList(); if (Date.now() - (state.lastPriceUpdate || 0) > 60 * 1000) setTimeout(() => updatePrices(null, true, true), 300); }
   else if (p[0] === 'movimientos') renderMoves();
   else if (p[0] === 'ajustes' && p[1] === 'aspecto') renderLook();
   else if (p[0] === 'ajustes') renderSettings();
   else if (p[0] === 'noticias') renderNews();
+  else if (p[0] === 'seguimiento') renderWatch();
+  else if (p[0] === 'seg' && p[1]) renderWatchDetail(p[1]);
   else if (p[0] === 'grupo' && p[1] === 'reto' && p[2]) renderGame(p[2]);
   else if (p[0] === 'grupo') renderGroup();
   else if (p[0] === 'anadir') renderAdd();
