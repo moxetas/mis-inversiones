@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '40';
+const APP_VERSION = '41';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -40,6 +40,7 @@ function saveState() {
   } catch (e) {
     toast('No se ha podido guardar en este teléfono');
   }
+  if (typeof cloudSchedule === 'function') cloudSchedule();
 }
 
 let state = loadState();
@@ -271,6 +272,8 @@ function renderHome() {
         <button class="btn secondary" type="button" id="demo">Probar con datos de ejemplo</button>
         <p></p>
         <a class="btn secondary" href="#/guia">❓ Cómo funciona</a>
+        <p></p>
+        <a class="btn" href="#/ajustes/nube">☁️ Recuperar mis datos de la nube</a>
       </div>`;
     $('#demo').addEventListener('click', loadDemo);
     return;
@@ -294,6 +297,7 @@ function renderHome() {
   const top = rows.filter((r) => !r.c.closed).sort((a, b) => bv(b) - bv(a)).slice(0, 5);
 
   view.innerHTML = `
+    ${state.cloud ? '' : '<a class="card cloud-nudge" href="#/ajustes/nube"><span aria-hidden="true">☁️</span><span><b>Activa la copia en la nube</b><br><span class="s">Para no perder nada si cambias de móvil o se borra la app</span></span><span class="chev" aria-hidden="true">›</span></a>'}
     <section class="card hero">
       <div class="label">Valor de tu cartera</div>
       <div class="big num">${money(tot.value)}</div>
@@ -1301,6 +1305,11 @@ function renderNews() {
 function renderSettings() {
   setChrome({ title: 'Ajustes', tab: 'settings', back: '#/' });
   view.innerHTML = `
+    <a class="card look-link" href="#/ajustes/nube">
+      <span class="look-ic" aria-hidden="true">☁️</span>
+      <span><b>Copia en la nube</b><br><span class="s">${state.cloud ? 'Activada · cuenta ' + esc(state.cloud.user) : 'Desactivada: actívala para no perder nada'}</span></span>
+      <span class="chev" aria-hidden="true">›</span>
+    </a>
     <a class="card look-link" href="#/ajustes/aspecto">
       <span class="look-ic" aria-hidden="true">🎨</span>
       <span><b>Personalizar</b><br><span class="s">Colores, modo oscuro y fondo de pantalla</span></span>
@@ -1759,6 +1768,7 @@ function render() {
   else if (p[0] === 'inversiones') { if (params.get('de')) { listOwner = params.get('de') === 'yo' ? null : params.get('de'); listPlatform = null; } renderList(); if (Date.now() - (state.lastPriceUpdate || 0) > 60 * 1000) setTimeout(() => updatePrices(null, true, true), 300); }
   else if (p[0] === 'movimientos') renderMoves();
   else if (p[0] === 'ajustes' && p[1] === 'aspecto') renderLook();
+  else if (p[0] === 'ajustes' && p[1] === 'nube') renderCloud();
   else if (p[0] === 'ajustes') renderSettings();
   else if (p[0] === 'noticias') renderNews();
   else if (p[0] === 'seguimiento') renderWatch();
