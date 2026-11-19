@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '39';
+const APP_VERSION = '40';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -43,6 +43,8 @@ function saveState() {
 }
 
 let state = loadState();
+// Pide al iPhone que no borre los datos de la app cuando se quede sin espacio
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* no disponible */ }
 // El Bitcoin se compró en dólares: si aún no tiene moneda, se le pone USD
 // y está guardado en un Ledger
 for (const i of state.investments) if (i.tv && !i.tv.includes(':')) delete i.tvTried;
@@ -1360,7 +1362,7 @@ function renderSettings() {
     const data = await readDataFile(e.target);
     if (!data) return;
     if (!confirm('Se cambiarán los datos actuales por los de la copia (' + data.investments.length + ' inversiones, ' + data.moves.length + ' movimientos). ¿Seguir?')) return;
-    state = Object.assign(freshState(), { currency: data.currency || 'EUR', rates: data.rates || {}, investments: data.investments, moves: data.moves, kids: data.kids || [], watch: data.watch || [], history: data.history || {} });
+    state = Object.assign(freshState(), { currency: data.currency || 'EUR', rates: data.rates || {}, investments: data.investments, moves: data.moves, kids: data.kids || [], watch: data.watch || [], history: data.history || {}, group: data.group || null });
     saveState();
     toast('Copia recuperada');
     renderSettings();
