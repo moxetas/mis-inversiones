@@ -4,7 +4,7 @@
 // su logo, cuánto han subido desde que los sigues y sus noticias en la pestaña Noticias.
 // Usa funciones de app.js (state, tvQuotes, logoHtml…) y retos.js (searchAssets).
 
-let watchTimer = null, watchSearchT = null;
+let watchTimer = null, watchSearchT = null, watchEdit = false;
 
 function watchList() { return state.watch || (state.watch = []); }
 // Para el logo, las noticias y el gráfico, cada activo seguido se trata como una inversión «de mentira»
@@ -29,6 +29,12 @@ async function refreshWatch(rerender) {
 }
 
 function watchRow(w) {
+  if (watchEdit) return `
+    <div class="row">
+      ${logoHtml(watchInv(w), 40)}
+      <span class="main"><div class="t">${esc(w.n)}</div><div class="s">${esc(w.s)}</div></span>
+      <span class="end"><button type="button" class="btn small danger" data-rm="${esc(w.id)}">Quitar</button></span>
+    </div>`;
   const since = wpct(w.p0, w.p), fresh = w.at && Date.now() - w.at < 36 * 3600e3;
   return `
     <a class="row" href="#/seg/${esc(w.id)}">
@@ -52,9 +58,19 @@ function renderWatch() {
       <label class="field"><span>Añadir un activo al seguimiento</span><input id="w-q" type="search" autocomplete="off" placeholder="Nombre, ticker o ISIN (Nvidia, PLTR, Solana…)"></label>
       <div id="w-res"></div>
     </section>
-    ${list.length ? `<h2 class="section-title">En el punto de mira (${list.length})</h2><div class="list">${list.map(watchRow).join('')}</div>
+    ${list.length ? `<div class="section-head"><h2 class="section-title">En el punto de mira (${list.length})</h2><button type="button" class="btn small secondary" id="w-edit">${watchEdit ? 'Hecho' : 'Editar'}</button></div><div class="list">${list.map(watchRow).join('')}</div>
       <p class="note">Precios de TradingView en directo. «Desde» es lo que ha subido o bajado desde el día que empezaste a seguirlo. Sus noticias salen en la pestaña Noticias.</p>`
       : `<div class="card empty"><p><b>Aún no sigues ningún activo.</b></p><p>Busca arriba las acciones, ETF o criptos que tengas en el punto de mira: verás su precio en directo, su gráfico y sus noticias, sin mezclarlos con tu cartera.</p></div>`}`;
+  if (!list.length) watchEdit = false;
+  const ed = $('#w-edit');
+  if (ed) ed.addEventListener('click', () => { watchEdit = !watchEdit; renderWatch(); });
+  for (const b of view.querySelectorAll('[data-rm]')) b.addEventListener('click', () => {
+    const w = watchList().find((x) => x.id === b.dataset.rm);
+    if (!w) return;
+    state.watch = watchList().filter((x) => x.id !== w.id);
+    saveState(); toast('Has dejado de seguir ' + w.n);
+    const y = window.scrollY; renderWatch(); window.scrollTo(0, y);
+  });
   const q = $('#w-q');
   q.addEventListener('input', () => {
     clearTimeout(watchSearchT);
