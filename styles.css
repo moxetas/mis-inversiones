@@ -499,3 +499,4 @@ button.row:first-child { border-top: 0; }
 .cloud-nudge .s, .cloud-ok .s { color: var(--muted); font-size: 14px; }
 .cloud-ok { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
 .cloud-ic { font-size: 34px; }
+.plat-legend li { grid-template-columns: 32px minmax(0, 1fr) auto auto; }

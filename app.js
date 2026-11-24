@@ -3,7 +3,7 @@
 // Moxetas Invest: todo se guarda en el teléfono (localStorage). Sin servidor ni librerías.
 
 const STORAGE_KEY = 'inversiones.v1';
-const APP_VERSION = '42';
+const APP_VERSION = '43';
 
 // Tipos de inversión, siempre en este orden: cada uno tiene su color fijo (--t1 … --t8)
 const TYPES = [
@@ -331,7 +331,7 @@ function renderHome() {
     <section class="card">
       <h2>Por bróker o billetera</h2>
       <ul class="legend plat-legend">
-        ${byPlatform(rows).map((g) => `<li><span></span><span>${esc(g.name)}<div class="num gl ${cls(g.un)}">${signed(g.un)} · ${g.cost > 0 ? signed(g.un / g.cost, pct) : ''}</div></span><span class="amt">${money(g.value)}</span><span class="pct">${pct(share(g.value))}</span></li>`).join('')}
+        ${byPlatform(rows).filter((g) => g.value > 0.005).map((g) => `<li>${platformBadge(g.name, 32)}<span>${esc(g.name)}<div class="num gl ${cls(g.un)}">${signed(g.un)} · ${g.cost > 0 ? signed(g.un / g.cost, pct) : ''}</div></span><span class="amt">${money(g.value)}</span><span class="pct">${pct(share(g.value))}</span></li>`).join('')}
       </ul>
       <a class="more" href="#/inversiones">Ver por bróker o billetera</a>
     </section>` : ''}
@@ -392,11 +392,12 @@ const PLATFORM_LOGO = {
   ing: 'icons/logos/plat-ing.png', klarna: 'icons/logos/plat-klarna.png',
   'metatrader 5': 'icons/logos/plat-metatrader-5.png', metatrader5: 'icons/logos/plat-metatrader-5.png', mt5: 'icons/logos/plat-metatrader-5.png', metatrader: 'icons/logos/plat-metatrader-5.png',
 };
-function platformBadge(name) {
+function platformBadge(name, size) {
+  const z = size || 40;
   const logo = PLATFORM_LOGO[normName(name).trim()];
-  if (logo) return `<span class="logo" style="width:40px;height:40px" aria-hidden="true"><img src="${logo}" alt=""></span>`;
+  if (logo) return `<span class="logo" style="width:${z}px;height:${z}px" aria-hidden="true"><img src="${logo}" alt=""></span>`;
   const ini = esc(name.replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?');
-  return `<span class="logo ini plat-ini" style="width:40px;height:40px;font-size:14px" aria-hidden="true">${ini}</span>`;
+  return `<span class="logo ini plat-ini" style="width:${z}px;height:${z}px;font-size:${Math.round(z * 0.35)}px" aria-hidden="true">${ini}</span>`;
 }
 function platformRow(g, active) {
   return `
